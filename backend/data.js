@@ -65,7 +65,7 @@ const places = [
     actividades: 'Senderismo de montaña, observación de los meandros del río Marañón y fotografía paisajística de alta montaña.',
     imagen: '/images/celendin-hero.jpg',
     // Pega aquí tu <iframe ...> o el link https://www.google.com/maps/embed?pb=...
-    mapEmbedUrl: '',
+    mapEmbedUrl: '<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d584.1532930796857!2d-78.11469253749826!3d-6.8766012547832185!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x91b3cd957141df7b%3A0xd51d57c99698af0c!2sLa%20fila%20de%20%22Lanche%22%20Jelig!5e1!3m2!1ses-419!2spe!4v1794165686615!5m2!1ses-419!2spe" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>',
     orden: 5,
   },
   {
