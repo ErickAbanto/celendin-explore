@@ -6,9 +6,12 @@ const Place = mongoose.model(
     {
       nombre: { type: String, required: true },
       ubicacion: { type: String, required: true },
+      distancia: { type: String, default: '' },
       categoria: { type: String, required: true },
       horario: { type: String, default: 'Acceso libre' },
       desc: { type: String, required: true },
+      historia: { type: String, default: '' },
+      actividades: { type: String, default: '' },
       imagen: { type: String, required: true },
       lat: { type: Number, required: true },
       lng: { type: Number, required: true },
