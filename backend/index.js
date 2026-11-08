@@ -33,7 +33,16 @@ app.get('/api/health', (_req, res) =>
 app.get('/api/places', async (req, res) => {
   try {
     const list = mongoActivo ? await Place.find().sort({ orden: 1 }) : places;
-    res.json(list.map((doc) => withFullImageUrl(req, doc)));
+    res.json(
+      list.map((doc) => {
+        const obj = withFullImageUrl(req, doc);
+        const localMatch = places.find((p) => p.nombre === obj.nombre);
+        if (localMatch) {
+          obj.mapEmbedUrl = localMatch.mapEmbedUrl || obj.mapEmbedUrl || '';
+        }
+        return obj;
+      })
+    );
   } catch (e) {
     res.json(places.map((doc) => withFullImageUrl(req, doc)));
   }

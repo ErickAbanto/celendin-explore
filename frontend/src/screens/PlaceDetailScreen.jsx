@@ -8,10 +8,28 @@ import {
   Image,
   Linking,
   BackHandler,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { WebView } from 'react-native-webview';
 import { COLORS } from '../constants/theme';
 import { getImageUrl } from '../services/api';
+
+function parseIframeOrUrl(raw) {
+  if (!raw || typeof raw !== 'string' || !raw.trim()) {
+    return { embedSrc: null, lat: null, lng: null };
+  }
+  const texto = raw.trim();
+  const srcMatch = texto.match(/src=["']([^"']+)["']/i);
+  const embedSrc = srcMatch ? srcMatch[1] : texto;
+  const lngMatch = embedSrc.match(/!2d(-?\d+(?:\.\d+)?)/);
+  const latMatch = embedSrc.match(/!3d(-?\d+(?:\.\d+)?)/);
+  return {
+    embedSrc,
+    lat: latMatch ? parseFloat(latMatch[1]) : null,
+    lng: lngMatch ? parseFloat(lngMatch[1]) : null,
+  };
+}
 
 export default function PlaceDetailScreen({ lugar, onBack }) {
   // Permite que el botón físico "Atrás" de Android regrese a la lista
@@ -27,10 +45,38 @@ export default function PlaceDetailScreen({ lugar, onBack }) {
 
   const imgUri = lugar.imagenUrl || getImageUrl(lugar.imagen);
 
+  // Soporta pegar tanto el código <iframe src="..."></iframe> como el link directo
+  const parsed = parseIframeOrUrl(lugar.mapEmbedUrl);
+  const embedSrc = parsed.embedSrc;
+  const lat = lugar.lat ?? parsed.lat;
+  const lng = lugar.lng ?? parsed.lng;
+  const tieneUbicacion = Boolean(embedSrc || (lat && lng));
+
+  const iframeHtml = embedSrc
+    ? `<!DOCTYPE html>
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+          <style>
+            html, body { margin: 0; padding: 0; height: 100%; width: 100%; background: #07070F; overflow: hidden; }
+            iframe { width: 100%; height: 100%; border: 0; }
+          </style>
+        </head>
+        <body>
+          <iframe
+            src="${embedSrc}"
+            allowfullscreen=""
+            loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin">
+          </iframe>
+        </body>
+      </html>`
+    : '';
+
   const abrirComoLlegar = () => {
     const destination =
-      lugar.lat && lugar.lng
-        ? `${lugar.lat},${lugar.lng}`
+      lat && lng
+        ? `${lat},${lng}`
         : encodeURIComponent(lugar.mapsQuery || `${lugar.nombre}, Celendín, Cajamarca, Perú`);
     Linking.openURL(
       `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`
@@ -39,8 +85,8 @@ export default function PlaceDetailScreen({ lugar, onBack }) {
 
   const abrirVerEnMapa = () => {
     const query =
-      lugar.lat && lugar.lng
-        ? `${lugar.lat},${lugar.lng}`
+      lat && lng
+        ? `${lat},${lng}`
         : encodeURIComponent(lugar.mapsQuery || `${lugar.nombre}, Celendín, Cajamarca, Perú`);
     Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
   };
@@ -58,7 +104,11 @@ export default function PlaceDetailScreen({ lugar, onBack }) {
         </View>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        nestedScrollEnabled
+      >
         {/* Imagen principal completa sin recortar */}
         <View style={styles.heroImageBox}>
           <Image source={{ uri: imgUri }} style={styles.heroImage} resizeMode="contain" />
@@ -104,7 +154,7 @@ export default function PlaceDetailScreen({ lugar, onBack }) {
             </View>
           </View>
 
-          {lugar.lat && lugar.lng && (
+          {lat && lng && (
             <View style={styles.infoItem}>
               <View style={[styles.iconBox, { backgroundColor: '#2A1458' }]}>
                 <Ionicons name="compass" size={18} color={COLORS.primary} />
@@ -112,25 +162,64 @@ export default function PlaceDetailScreen({ lugar, onBack }) {
               <View style={styles.infoTextWrap}>
                 <Text style={styles.infoLabel}>Coordenadas GPS Exactas</Text>
                 <Text style={styles.infoValue}>
-                  Latitud: {lugar.lat.toFixed(4)} · Longitud: {lugar.lng.toFixed(4)}
+                  Latitud: {Number(lat).toFixed(6)} · Longitud: {Number(lng).toFixed(6)}
                 </Text>
               </View>
             </View>
           )}
         </View>
 
-        {/* Botones de Google Maps destacados */}
-        <View style={styles.mapsSection}>
-          <TouchableOpacity style={styles.primaryMapBtn} onPress={abrirComoLlegar}>
-            <Ionicons name="navigate" size={18} color="#FFF" />
-            <Text style={styles.primaryMapBtnText}>Cómo llegar en Google Maps (Ruta GPS)</Text>
-          </TouchableOpacity>
+        {/* Mapa interactivo embebido de Google Maps (si ya tiene su iframe) */}
+        {!!embedSrc && (
+          <View style={styles.embedMapCard}>
+            <View style={styles.embedMapHeader}>
+              <Ionicons name="map" size={17} color={COLORS.primary} />
+              <Text style={styles.embedMapTitle}>Mapa Satelital en Vivo (Google Maps)</Text>
+            </View>
+            <View style={styles.embedMapBox}>
+              {Platform.OS === 'web' ? (
+                <iframe
+                  src={embedSrc}
+                  style={{ width: '100%', height: '100%', border: 0 }}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
+              ) : (
+                <WebView
+                  originWhitelist={['*']}
+                  source={{ html: iframeHtml }}
+                  style={styles.webview}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  nestedScrollEnabled
+                />
+              )}
+            </View>
+          </View>
+        )}
 
-          <TouchableOpacity style={styles.secondaryMapBtn} onPress={abrirVerEnMapa}>
-            <Ionicons name="map-outline" size={17} color={COLORS.primary} />
-            <Text style={styles.secondaryMapBtnText}>Ver ubicación en el Mapa</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Botones de Google Maps (si ya tiene su ubicación) o espacio libre */}
+        {tieneUbicacion ? (
+          <View style={styles.mapsSection}>
+            <TouchableOpacity style={styles.primaryMapBtn} onPress={abrirComoLlegar}>
+              <Ionicons name="navigate" size={18} color="#FFF" />
+              <Text style={styles.primaryMapBtnText}>Cómo llegar en Google Maps (Ruta GPS)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.secondaryMapBtn} onPress={abrirVerEnMapa}>
+              <Ionicons name="map-outline" size={17} color={COLORS.primary} />
+              <Text style={styles.secondaryMapBtnText}>Abrir en la App de Google Maps</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.pendingMapBox}>
+            <Ionicons name="location-outline" size={20} color={COLORS.primary} />
+            <Text style={styles.pendingMapText}>
+              Espacio libre para ubicación de Google Maps (pega tu {'<iframe>'} en ServicesScreen.jsx o data.js)
+            </Text>
+          </View>
+        )}
 
         {/* Secciones informativas completas */}
         <View style={styles.sectionCard}>
@@ -263,6 +352,37 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 2,
   },
+  embedMapCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  embedMapHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  embedMapTitle: {
+    color: COLORS.textMain,
+    fontSize: 13.5,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  embedMapBox: {
+    width: '100%',
+    height: 250,
+    backgroundColor: '#05050A',
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: '#05050A',
+  },
   mapsSection: {
     marginBottom: 18,
     gap: 10,
@@ -303,6 +423,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     marginLeft: 8,
+  },
+  pendingMapBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#131122',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.primary,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  pendingMapText: {
+    color: COLORS.textSecondary,
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginLeft: 10,
+    flex: 1,
   },
   sectionCard: {
     backgroundColor: COLORS.card,

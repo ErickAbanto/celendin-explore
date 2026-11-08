@@ -14,7 +14,54 @@ import { COLORS } from '../constants/theme';
 import { getPlaces, getImageUrl } from '../services/api';
 import PlaceDetailScreen from './PlaceDetailScreen';
 
-// Información real verificada y coordenadas GPS de los atractivos de Celendín - Cajamarca
+// ============================================================================
+// UBICACIONES DE GOOGLE MAPS (PEGA AQUÍ TUS <iframe ...></iframe> O LINKS)
+// Puedes pegar el código completo <iframe src="..."></iframe> de Google Maps
+// y la app extraerá automáticamente el mapa y las coordenadas GPS.
+// ============================================================================
+const UBICACIONES_GOOGLE_MAPS = {
+  // 1. Plaza de Armas (LIBRE PARA QUE PEGUES TU IFRAME)
+  'Plaza de Armas e Iglesia Virgen del Carmen': '',
+
+  // 2. Mirador de San Isidro (YA CONFIGURADO CON TU IFRAME)
+  'Mirador de San Isidro y Cristo Redentor':
+    '<iframe src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d331.3138938730578!2d-78.15001123933955!3d-6.8656265750422385!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x91b3cdd16787d919%3A0x319dd0e05cbbf977!2sMirador%20de%20Celendin!5e1!3m2!1ses-419!2spe!4v1794164257420!5m2!1ses-419!2spe" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>',
+
+  // 3. Catarata El Cornelio y Aguas de Llanguat (LIBRE PARA QUE PEGUES TU IFRAME)
+  'Catarata El Cornelio y Aguas de Llanguat': '',
+
+  // 4. Parque El Sombrero y Museo del Marañón (LIBRE PARA QUE PEGUES TU IFRAME)
+  'Parque El Sombrero y Museo del Marañón': '',
+  'Parque del Sombrero y Museo del Marañón': '',
+
+  // 5. Cerro Jelij y Mirador del Cañón del Marañón (LIBRE PARA QUE PEGUES TU IFRAME)
+  'Cerro Jelij y Mirador del Cañón del Marañón': '',
+  'Cerro Jelij y Ruta al Cañón del Marañón': '',
+
+  // 6. Complejo Arqueológico La Chocta (LIBRE PARA QUE PEGUES TU IFRAME)
+  'Complejo Arqueológico La Chocta': '',
+};
+
+// Extrae automáticamente la URL src y las coordenadas (!3d lat, !2d lng) del iframe pegado
+function extraerDatosDeIframe(rawInput) {
+  if (!rawInput || typeof rawInput !== 'string' || !rawInput.trim()) {
+    return { mapEmbedUrl: '', lat: null, lng: null };
+  }
+  const texto = rawInput.trim();
+  const srcMatch = texto.match(/src=["']([^"']+)["']/i);
+  const mapEmbedUrl = srcMatch ? srcMatch[1] : texto;
+
+  const lngMatch = mapEmbedUrl.match(/!2d(-?\d+(?:\.\d+)?)/);
+  const latMatch = mapEmbedUrl.match(/!3d(-?\d+(?:\.\d+)?)/);
+
+  return {
+    mapEmbedUrl,
+    lat: latMatch ? parseFloat(latMatch[1]) : null,
+    lng: lngMatch ? parseFloat(lngMatch[1]) : null,
+  };
+}
+
+// Información real verificada de los atractivos de Celendín - Cajamarca
 const INFO_REAL_POR_NOMBRE = {
   'Plaza de Armas e Iglesia Virgen del Carmen': {
     distancia: 'Km 0 de la ciudad (a 107 km / 2 h 30 min de Cajamarca)',
@@ -22,9 +69,6 @@ const INFO_REAL_POR_NOMBRE = {
       'Frente a la plaza se alza la Iglesia Matriz Virgen del Carmen (inicios del siglo XIX), edificada en adobe y tapial con dos torres gemelas. Resguarda altares tallados en madera y la famosa imagen del Cristo Crucificado, que según la tradición histórica celendina fue esculpida sobre la osamenta real de un joven devoto local.',
     actividades:
       'Fotografía arquitectónica, visita al templo neoclásico, paseo por casonas coloniales y degustación de chocolate y dulces en los alrededores.',
-    lat: -6.8660,
-    lng: -78.1458,
-    mapsQuery: 'Plaza de Armas de Celendin, Cajamarca, Peru',
   },
   'Mirador de San Isidro y Cristo Redentor': {
     distancia: 'A 1 km de la Plaza de Armas (4 cuadras / 12 min a pie por escalinatas)',
@@ -32,9 +76,6 @@ const INFO_REAL_POR_NOMBRE = {
       'En 1920 se edificó en la cima la capilla de adobe y teja en honor a San Isidro Labrador. En el año 2005, el escultor celendino Miguel Díaz Dávila levantó la monumental estatua blanca del Cristo Redentor de 10 metros de altura con los brazos extendidos bendiciendo al pueblo shilico.',
     actividades:
       'Caminata por las escalinatas, vista panorámica del atardecer celendino y visita a la capilla de San Isidro.',
-    lat: -6.8679,
-    lng: -78.1518,
-    mapsQuery: 'Mirador San Isidro, Celendin, Cajamarca, Peru',
   },
   'Catarata El Cornelio y Aguas de Llanguat': {
     distancia: 'Cornelio: ~28 km vía Jerez–Huasmín · Llanguat: ~18 km al norte de Celendín',
@@ -42,9 +83,6 @@ const INFO_REAL_POR_NOMBRE = {
       'Llanguat ha sido históricamente el "Edén agrícola" de Celendín en la margen derecha del río Sendamal, célebre por sus haciendas cañeras, trapiches artesanales de chancaca y aguardiente, y sus fuentes termales ricas en minerales para dolencias óseas y reumáticas.',
     actividades:
       'Trekking ecológico hacia las caídas del río Jadibamba, baños termales en las pozas de Llanguat y avistamiento de flora y aves andinas.',
-    lat: -6.7845,
-    lng: -78.1722,
-    mapsQuery: 'Baños Termales de Llanguat, Celendin, Cajamarca, Peru',
   },
   'Parque del Sombrero y Museo del Marañón': {
     distancia: 'A 800 m de la Plaza de Armas (5 min en mototaxi o 10 min a pie)',
@@ -52,9 +90,6 @@ const INFO_REAL_POR_NOMBRE = {
       'El circuito cultural se completa con el Museo Regional del Marañón "Gregorio Sánchez Araujo", que conserva cerámicos, textiles, armas líticas y metalurgia de las culturas preincas Cajamarca, Chachapoyas e Inca, además de restos paleontológicos locales.',
     actividades:
       'Recorrido por el monumento al sombrero, visita guiada al Museo del Marañón y compra directa a tejedores en la feria dominical.',
-    lat: -6.8615,
-    lng: -78.1452,
-    mapsQuery: 'Parque El Sombrero, Celendin, Cajamarca, Peru',
   },
   'Parque El Sombrero y Museo del Marañón': {
     distancia: 'A 800 m de la Plaza de Armas (5 min en mototaxi o 10 min a pie)',
@@ -62,9 +97,6 @@ const INFO_REAL_POR_NOMBRE = {
       'El circuito cultural se completa con el Museo Regional del Marañón "Gregorio Sánchez Araujo", que conserva cerámicos, textiles, armas líticas y metalurgia de las culturas preincas Cajamarca, Chachapoyas e Inca, además de restos paleontológicos locales.',
     actividades:
       'Recorrido por el monumento al sombrero, visita guiada al Museo del Marañón y compra directa a tejedores en la feria dominical.',
-    lat: -6.8615,
-    lng: -78.1452,
-    mapsQuery: 'Parque El Sombrero, Celendin, Cajamarca, Peru',
   },
   'Cerro Jelij y Ruta al Cañón del Marañón': {
     distancia: 'A 4 km al este de la ciudad de Celendín (ruta hacia Balsas / Amazonas)',
@@ -72,9 +104,6 @@ const INFO_REAL_POR_NOMBRE = {
       'El Cerro Jelij posee un enorme valor paleontológico y científico: en sus laderas se hallaron los restos fósiles de un megaterio (perezoso gigante prehistórico de unas 4 toneladas) que habitó la región hace más de 10,000 años en la era Cuaternaria.',
     actividades:
       'Senderismo de montaña, observación de los meandros del río Marañón y fotografía paisajística de alta montaña.',
-    lat: -6.8520,
-    lng: -78.1280,
-    mapsQuery: 'Cerro Jelij, Celendin, Cajamarca, Peru',
   },
   'Cerro Jelij y Mirador del Cañón del Marañón': {
     distancia: 'A 4 km al este de la ciudad de Celendín (ruta hacia Balsas / Amazonas)',
@@ -82,9 +111,6 @@ const INFO_REAL_POR_NOMBRE = {
       'El Cerro Jelij posee un enorme valor paleontológico y científico: en sus laderas se hallaron los restos fósiles de un megaterio (perezoso gigante prehistórico de unas 4 toneladas) que habitó la región hace más de 10,000 años en la era Cuaternaria.',
     actividades:
       'Senderismo de montaña, observación de los meandros del río Marañón y fotografía paisajística de alta montaña.',
-    lat: -6.8520,
-    lng: -78.1280,
-    mapsQuery: 'Cerro Jelij, Celendin, Cajamarca, Peru',
   },
   'Complejo Arqueológico La Chocta': {
     distancia: 'A 42 km al sur de Celendín (hasta Oxamarca) + 10 km hacia la ciudadela',
@@ -92,9 +118,6 @@ const INFO_REAL_POR_NOMBRE = {
       'Data del periodo Intermedio Tardío (entre los siglos XI y XV d.C.), con arquitectura de piedra laja unida con argamasa, murallas perimétricas, torreones de vigilancia, plazas ceremoniales y chullpas funerarias de dos y tres pisos que controlaban el paso entre los Andes y la ceja de selva.',
     actividades:
       'Exploración arqueológica de chullpas y torreones, caminata por cumbres altoandinas y observación de paisajes nubosos.',
-    lat: -7.0436,
-    lng: -78.0694,
-    mapsQuery: 'Complejo Arqueologico La Chocta, Oxamarca, Celendin, Peru',
   },
 };
 
@@ -164,15 +187,20 @@ const LUGARES_RESPALDO = [
 function enriquecerLugar(item) {
   if (!item) return null;
   const extra = INFO_REAL_POR_NOMBRE[item.nombre] || {};
+  const iframeConfigurado = UBICACIONES_GOOGLE_MAPS[item.nombre] || item.mapEmbedUrl || '';
+  const datosMapa = extraerDatosDeIframe(iframeConfigurado);
+
   return {
     ...extra,
     ...item,
     distancia: item.distancia || extra.distancia,
     historia: item.historia || extra.historia,
     actividades: item.actividades || extra.actividades,
-    lat: item.lat ?? extra.lat,
-    lng: item.lng ?? extra.lng,
-    mapsQuery: item.mapsQuery || extra.mapsQuery || `${item.nombre}, Celendín, Cajamarca, Perú`,
+    // Solo usa ubicación/mapa si tiene iframe configurado en UBICACIONES_GOOGLE_MAPS o mapEmbedUrl
+    mapEmbedUrl: datosMapa.mapEmbedUrl,
+    lat: datosMapa.lat,
+    lng: datosMapa.lng,
+    mapsQuery: datosMapa.mapEmbedUrl ? `${item.nombre}, Celendín, Cajamarca, Perú` : '',
   };
 }
 
@@ -239,7 +267,7 @@ export default function ServicesScreen({ route, navigation }) {
     >
       <Text style={styles.headerTitle}>Atractivos de Celendín</Text>
       <Text style={styles.headerSub}>
-        Toca cualquier atractivo turístico para abrir su página con la historia, datos reales y ruta en Google Maps:
+        Toca cualquier atractivo turístico para abrir su página con la historia, datos reales y ubicación:
       </Text>
       {cargando && <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 20 }} />}
 

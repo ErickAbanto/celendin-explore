@@ -13,9 +13,7 @@ const Place = mongoose.model(
       historia: { type: String, default: '' },
       actividades: { type: String, default: '' },
       imagen: { type: String, required: true },
-      lat: { type: Number, required: true },
-      lng: { type: Number, required: true },
-      mapsQuery: { type: String, default: '' },
+      mapEmbedUrl: { type: String, default: '' },
       orden: { type: Number, default: 0 },
     },
     { timestamps: true }

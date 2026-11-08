@@ -9,9 +9,8 @@ const places = [
     historia: 'Frente a la plaza se alza la Iglesia Matriz Virgen del Carmen (inicios del siglo XIX), edificada en adobe y tapial con dos torres gemelas. Resguarda altares tallados en madera y la famosa imagen del Cristo Crucificado, que según la tradición histórica celendina fue esculpida sobre la osamenta real de un joven devoto local.',
     actividades: 'Fotografía arquitectónica, visita al templo neoclásico, paseo por casonas coloniales y degustación de chocolate y dulces en los alrededores.',
     imagen: '/images/plaza-armas.jpg',
-    lat: -6.8660,
-    lng: -78.1458,
-    mapsQuery: 'Plaza de Armas de Celendin, Cajamarca, Peru',
+    // Pega aquí tu <iframe ...> o el link https://www.google.com/maps/embed?pb=...
+    mapEmbedUrl: '',
     orden: 1,
   },
   {
@@ -24,9 +23,7 @@ const places = [
     historia: 'En 1920 se edificó en la cima la capilla de adobe y teja en honor a San Isidro Labrador. En el año 2005, el escultor celendino Miguel Díaz Dávila levantó la monumental estatua blanca del Cristo Redentor de 10 metros de altura con los brazos extendidos bendiciendo al pueblo shilico.',
     actividades: 'Caminata por las escalinatas, vista panorámica del atardecer celendino y visita a la capilla de San Isidro.',
     imagen: '/images/mirador-san-isidro.jpg',
-    lat: -6.8679,
-    lng: -78.1518,
-    mapsQuery: 'Mirador San Isidro, Celendin, Cajamarca, Peru',
+    mapEmbedUrl: 'https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d331.3138938730578!2d-78.15001123933955!3d-6.8656265750422385!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x91b3cdd16787d919%3A0x319dd0e05cbbf977!2sMirador%20de%20Celendin!5e1!3m2!1ses-419!2spe!4v1794164257420!5m2!1ses-419!2spe',
     orden: 2,
   },
   {
@@ -39,9 +36,8 @@ const places = [
     historia: 'Llanguat ha sido históricamente el "Edén agrícola" de Celendín en la margen derecha del río Sendamal, célebre por sus haciendas cañeras, trapiches artesanales de chancaca y aguardiente, y sus fuentes termales ricas en minerales para dolencias óseas y reumáticas.',
     actividades: 'Trekking ecológico hacia las caídas del río Jadibamba, baños termales en las pozas de Llanguat y avistamiento de flora y aves andinas.',
     imagen: '/images/catarata-cornelio.jpg',
-    lat: -6.7845,
-    lng: -78.1722,
-    mapsQuery: 'Baños Termales de Llanguat, Celendin, Cajamarca, Peru',
+    // Pega aquí tu <iframe ...> o el link https://www.google.com/maps/embed?pb=...
+    mapEmbedUrl: '',
     orden: 3,
   },
   {
@@ -54,9 +50,8 @@ const places = [
     historia: 'El circuito cultural se completa con el Museo Regional del Marañón "Gregorio Sánchez Araujo", que conserva cerámicos, textiles, armas líticas y metalurgia de las culturas preincas Cajamarca, Chachapoyas e Inca, además de restos paleontológicos locales.',
     actividades: 'Recorrido por el monumento al sombrero, visita guiada al Museo del Marañón y compra directa a tejedores en la feria dominical.',
     imagen: '/images/sombrero-shilico.jpg',
-    lat: -6.8615,
-    lng: -78.1452,
-    mapsQuery: 'Parque El Sombrero, Celendin, Cajamarca, Peru',
+    // Pega aquí tu <iframe ...> o el link https://www.google.com/maps/embed?pb=...
+    mapEmbedUrl: '',
     orden: 4,
   },
   {
@@ -69,9 +64,8 @@ const places = [
     historia: 'El Cerro Jelij posee un enorme valor paleontológico y científico: en sus laderas se hallaron los restos fósiles de un megaterio (perezoso gigante prehistórico de unas 4 toneladas) que habitó la región hace más de 10,000 años en la era Cuaternaria.',
     actividades: 'Senderismo de montaña, observación de los meandros del río Marañón y fotografía paisajística de alta montaña.',
     imagen: '/images/celendin-hero.jpg',
-    lat: -6.8520,
-    lng: -78.1280,
-    mapsQuery: 'Cerro Jelij, Celendin, Cajamarca, Peru',
+    // Pega aquí tu <iframe ...> o el link https://www.google.com/maps/embed?pb=...
+    mapEmbedUrl: '',
     orden: 5,
   },
   {
@@ -84,9 +78,8 @@ const places = [
     historia: 'Data del periodo Intermedio Tardío (entre los siglos XI y XV d.C.), con arquitectura de piedra laja unida con argamasa, murallas perimétricas, torreones de vigilancia, plazas ceremoniales y chullpas funerarias de dos y tres pisos que controlaban el paso entre los Andes y la ceja de selva.',
     actividades: 'Exploración arqueológica de chullpas y torreones, caminata por cumbres altoandinas y observación de paisajes nubosos.',
     imagen: '/images/mirador-san-isidro.jpg',
-    lat: -7.0436,
-    lng: -78.0694,
-    mapsQuery: 'Complejo Arqueologico La Chocta, Oxamarca, Celendin, Peru',
+    // Pega aquí tu <iframe ...> o el link https://www.google.com/maps/embed?pb=...
+    mapEmbedUrl: '',
     orden: 6,
   },
 ];
