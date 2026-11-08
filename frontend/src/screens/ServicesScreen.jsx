@@ -206,7 +206,9 @@ export default function ServicesScreen({ route }) {
             activeOpacity={0.9}
             onPress={() => setSeleccionado(activo ? null : item.nombre)}
           >
-            <Image source={{ uri: imgUri }} style={styles.cardBanner} />
+            <View style={styles.cardImageWrap}>
+              <Image source={{ uri: imgUri }} style={styles.cardBanner} resizeMode="contain" />
+            </View>
             <View style={styles.cardBody}>
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>{item.nombre}</Text>
@@ -277,10 +279,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 6,
   },
+  cardImageWrap: {
+    width: '100%',
+    height: 250,
+    backgroundColor: '#05050A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   cardBanner: {
     width: '100%',
-    height: 160,
-    backgroundColor: COLORS.cardActive,
+    height: '100%',
   },
   cardBody: { padding: 16 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },

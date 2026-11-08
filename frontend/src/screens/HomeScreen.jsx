@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, ImageBackground, Linking } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Image, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getPlaces, getImageUrl } from '../services/api';
@@ -43,7 +43,7 @@ const ATRACTIVOS_INICIALES = [
   },
 ];
 
-// Paleta oscura + morado neón (mismo diseño de referencia)
+// Paleta oscura + morado neón
 const UI = {
   bg: '#07070F',
   card: '#10101B',
@@ -104,47 +104,49 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Hero principal con imagen servida desde el Backend */}
-      <ImageBackground
-        source={{ uri: getImageUrl('/images/celendin-hero.jpg') }}
-        style={styles.hero}
-        imageStyle={styles.heroImage}
-      >
-        <View style={styles.heroOverlay} />
-        <View style={styles.badge}>
-          <Ionicons name="location" size={11} color={UI.purpleLight} />
-          <Text style={styles.badgeText}>EL CIELO AZUL DEL EDÉN · CAJAMARCA</Text>
-        </View>
-        <Text style={styles.title}>
-          CELENDÍN<Text style={styles.titleAccent}> EXPLORE</Text>
-        </Text>
-        <Text style={styles.subtitle}>
-          Guía informativa y rutas GPS de la Tierra del Sombrero de Paja Toquilla y el Chocolate Artesanal en Cajamarca.
-        </Text>
-        <View style={styles.heroButtonsRow}>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => navigation.navigate('Atractivos')}
-          >
-            <Text style={styles.primaryButtonText}>Explorar Atractivos</Text>
-            <Ionicons name="arrow-forward" size={14} color="#FFF" style={{ marginLeft: 8 }} />
-          </TouchableOpacity>
+      {/* Hero principal con imagen 16:9 completa arriba y texto abajo */}
+      <View style={styles.hero}>
+        <Image
+          source={{ uri: getImageUrl('/images/celendin-hero.jpg') }}
+          style={styles.heroBannerImg}
+          resizeMode="contain"
+        />
+        <View style={styles.heroBody}>
+          <View style={styles.badge}>
+            <Ionicons name="location" size={11} color={UI.purpleLight} />
+            <Text style={styles.badgeText}>EL CIELO AZUL DEL EDÉN · CAJAMARCA</Text>
+          </View>
+          <Text style={styles.title}>
+            CELENDÍN<Text style={styles.titleAccent}> EXPLORE</Text>
+          </Text>
+          <Text style={styles.subtitle}>
+            Guía informativa y rutas GPS de la Tierra del Sombrero de Paja Toquilla y el Chocolate Artesanal en Cajamarca.
+          </Text>
+          <View style={styles.heroButtonsRow}>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => navigation.navigate('Atractivos')}
+            >
+              <Text style={styles.primaryButtonText}>Explorar Atractivos</Text>
+              <Ionicons name="arrow-forward" size={14} color="#FFF" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.mapHeroBtn}
-            onPress={() =>
-              Linking.openURL(
-                'https://www.google.com/maps/dir/?api=1&destination=-6.8660,-78.1458&travelmode=driving'
-              )
-            }
-          >
-            <Ionicons name="navigate" size={14} color={UI.purpleLight} />
-            <Text style={styles.mapHeroBtnText}>Ruta a Celendín</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.mapHeroBtn}
+              onPress={() =>
+                Linking.openURL(
+                  'https://www.google.com/maps/dir/?api=1&destination=-6.8660,-78.1458&travelmode=driving'
+                )
+              }
+            >
+              <Ionicons name="navigate" size={14} color={UI.purpleLight} />
+              <Text style={styles.mapHeroBtnText}>Ruta a Celendín</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </ImageBackground>
+      </View>
 
-      {/* Carrusel de atractivos con imágenes desde el Backend */}
+      {/* Carrusel de atractivos con imágenes completas (1:1 sin recortar) */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Destinos en Celendín</Text>
         <TouchableOpacity onPress={() => navigation.navigate('Atractivos')}>
@@ -156,15 +158,17 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity
             key={item._id || item.nombre}
             style={styles.serviceCard}
-            activeOpacity={0.85}
+            activeOpacity={0.88}
             onPress={() => navigation.navigate('Atractivos', { lugarElegido: item.nombre })}
           >
-            <ImageBackground
-              source={{ uri: item.imagenUrl || getImageUrl(item.imagen) }}
-              style={styles.serviceImg}
-              imageStyle={styles.serviceImgInner}
-            >
-              <View style={styles.serviceShade} />
+            <View style={styles.serviceImgBox}>
+              <Image
+                source={{ uri: item.imagenUrl || getImageUrl(item.imagen) }}
+                style={styles.serviceImgFull}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={styles.serviceCardFooter}>
               <View style={styles.cardTopRow}>
                 <View style={styles.categoryPill}>
                   <Text style={styles.categoryPillText}>{item.categoria || 'Destino'}</Text>
@@ -176,11 +180,9 @@ export default function HomeScreen({ navigation }) {
                   <Ionicons name="navigate" size={13} color="#FFF" />
                 </TouchableOpacity>
               </View>
-              <View>
-                <Text style={styles.serviceName} numberOfLines={2}>{item.nombre}</Text>
-                <Text style={styles.tapHint}>Toca para ver ruta GPS ›</Text>
-              </View>
-            </ImageBackground>
+              <Text style={styles.serviceName} numberOfLines={2}>{item.nombre}</Text>
+              <Text style={styles.tapHint}>Ver ficha y ruta GPS ›</Text>
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -242,11 +244,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroImage: { borderRadius: 20, resizeMode: 'cover', opacity: 0.9 },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  hero: {
+    backgroundColor: UI.card,
     borderRadius: 20,
-    backgroundColor: 'rgba(7,7,15,0.62)',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: UI.glow,
+    shadowColor: UI.purpleLight,
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  heroBannerImg: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#05050A',
+  },
+  heroBody: {
+    padding: 18,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -259,8 +275,7 @@ const styles = StyleSheet.create({
   sectionLink: { color: UI.purpleLight, fontSize: 13, fontWeight: '600' },
   carousel: { marginHorizontal: -18, paddingLeft: 18 },
   serviceCard: {
-    width: 185,
-    height: 215,
+    width: 195,
     marginRight: 12,
     borderRadius: 16,
     borderWidth: 1,
@@ -268,17 +283,23 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: UI.card,
   },
-  serviceImg: { flex: 1, justifyContent: 'space-between', padding: 10 },
-  serviceImgInner: { resizeMode: 'cover' },
-  serviceShade: {
-    ...StyleSheet.absoluteFillObject,
-    top: '35%',
-    backgroundColor: 'rgba(7,7,15,0.78)',
+  serviceImgBox: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: '#05050A',
+  },
+  serviceImgFull: {
+    width: '100%',
+    height: '100%',
+  },
+  serviceCardFooter: {
+    padding: 12,
   },
   cardTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 6,
   },
   categoryPill: {
     backgroundColor: UI.purple,
@@ -295,21 +316,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  serviceName: { color: UI.text, fontSize: 14, fontWeight: 'bold', paddingHorizontal: 2 },
-  tapHint: { color: UI.purpleLight, fontSize: 11, fontWeight: '600', marginTop: 3, paddingHorizontal: 2 },
-  hero: {
-    backgroundColor: UI.card,
-    borderRadius: 20,
-    padding: 22,
-    paddingVertical: 26,
-    borderWidth: 1,
-    borderColor: UI.glow,
-    shadowColor: UI.purpleLight,
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
-  },
+  serviceName: { color: UI.text, fontSize: 14, fontWeight: 'bold' },
+  tapHint: { color: UI.purpleLight, fontSize: 11, fontWeight: '600', marginTop: 4 },
   badge: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -320,17 +328,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   badgeText: { color: UI.text, fontSize: 10, fontWeight: '600', marginLeft: 6, letterSpacing: 0.5 },
-  title: { color: UI.text, fontSize: 31, fontWeight: '800' },
+  title: { color: UI.text, fontSize: 29, fontWeight: '800' },
   titleAccent: { color: UI.purpleLight },
-  subtitle: { color: '#E2E8F0', fontSize: 14, lineHeight: 21, marginTop: 10 },
+  subtitle: { color: '#E2E8F0', fontSize: 14, lineHeight: 21, marginTop: 8 },
   heroButtonsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    marginTop: 18,
+    marginTop: 16,
     gap: 10,
   },
   primaryButton: {
@@ -350,7 +358,7 @@ const styles = StyleSheet.create({
   mapHeroBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 16, 27, 0.85)',
+    backgroundColor: UI.cardAlt,
     borderWidth: 1,
     borderColor: UI.purpleLight,
     paddingVertical: 10,

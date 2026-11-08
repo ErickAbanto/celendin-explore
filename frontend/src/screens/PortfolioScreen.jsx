@@ -88,20 +88,23 @@ export default function PortfolioScreen() {
 
       {temas.map((item) => (
         <View key={item._id || item.nombre} style={styles.card}>
-          <View style={styles.row}>
+          <View style={styles.imageBox}>
             <Image
               source={{ uri: item.imagenUrl || getImageUrl(item.imagen) }}
-              style={styles.thumb}
+              style={styles.fullImg}
+              resizeMode="contain"
             />
-            <View style={styles.headInfo}>
+          </View>
+          <View style={styles.cardContent}>
+            <View style={styles.topMeta}>
               <Text style={styles.proyStack}>{item.categoria}</Text>
-              <Text style={styles.proyTitle}>{item.nombre}</Text>
               <View style={styles.statusBadge}>
                 <Text style={styles.statusText}>{item.etiqueta}</Text>
               </View>
             </View>
+            <Text style={styles.proyTitle}>{item.nombre}</Text>
+            <Text style={styles.desc}>{item.desc}</Text>
           </View>
-          <Text style={styles.desc}>{item.desc}</Text>
         </View>
       ))}
     </ScrollView>
@@ -115,34 +118,39 @@ const styles = StyleSheet.create({
   headerSub: { color: COLORS.textSecondary, fontSize: 14, marginTop: 4, marginBottom: 20 },
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 16,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.button,
+    overflow: 'hidden',
   },
-  row: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  thumb: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
-    marginRight: 14,
-    backgroundColor: COLORS.cardActive,
+  imageBox: {
+    width: '100%',
+    height: 230,
+    backgroundColor: '#05050A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headInfo: { flex: 1 },
-  proyTitle: { color: COLORS.textMain, fontSize: 16, fontWeight: 'bold', marginTop: 2 },
+  fullImg: {
+    width: '100%',
+    height: '100%',
+  },
+  cardContent: { padding: 16 },
+  topMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  proyTitle: { color: COLORS.textMain, fontSize: 17, fontWeight: 'bold', marginBottom: 6 },
   proyStack: { color: COLORS.primary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   statusBadge: {
-    alignSelf: 'flex-start',
     backgroundColor: '#0F2A22',
     borderWidth: 1,
     borderColor: '#14532D',
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 8,
-    marginTop: 6,
   },
   statusText: { color: COLORS.success, fontSize: 11, fontWeight: 'bold' },
   desc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20 },

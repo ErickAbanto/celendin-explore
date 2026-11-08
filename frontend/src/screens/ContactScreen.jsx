@@ -81,10 +81,13 @@ export default function ContactScreen({ navigation }) {
       <View style={styles.grid}>
         {galeria.map((img) => (
           <View key={img._id || img.clave} style={styles.photoCard}>
-            <Image
-              source={{ uri: img.imagenUrl || getImageUrl(img.imagen) }}
-              style={styles.photo}
-            />
+            <View style={styles.photoBox}>
+              <Image
+                source={{ uri: img.imagenUrl || getImageUrl(img.imagen) }}
+                style={styles.photo}
+                resizeMode="contain"
+              />
+            </View>
             <View style={styles.photoCaption}>
               <Text style={styles.photoTitle}>{img.titulo}</Text>
               <Text style={styles.photoSub}>{img.subtitulo}</Text>
@@ -160,7 +163,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 14,
   },
-  photo: { width: '100%', height: 125, backgroundColor: COLORS.cardActive },
+  photoBox: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: '#05050A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photo: { width: '100%', height: '100%' },
   photoCaption: { padding: 10 },
   photoTitle: { color: COLORS.textMain, fontSize: 13, fontWeight: 'bold' },
   photoSub: { color: COLORS.textSecondary, fontSize: 11, marginTop: 2 },
