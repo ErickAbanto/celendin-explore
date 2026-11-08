@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Image, Linking } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Image, Linking, Platform, StatusBar } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getPlaces, getImageUrl } from '../services/api';
 
@@ -77,13 +77,15 @@ export default function HomeScreen({ navigation }) {
     };
   }, []);
 
+  const topNotchSpace = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 6 : 12
+  );
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top + 12, 28) }]}
-    >
-      {/* Encabezado */}
-      <View style={styles.header}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+      {/* Barra fija superior bajo el notch de la cámara */}
+      <View style={[styles.topHeaderBar, { paddingTop: topNotchSpace }]}>
         <View style={styles.brand}>
           <Ionicons name="compass" size={22} color={UI.purpleLight} />
           <Text style={styles.brandText}>CELENDÍN EXPLORE</Text>
@@ -103,6 +105,11 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </View>
+
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+      >
 
       {/* Hero principal con imagen 16:9 completa arriba y texto abajo */}
       <View style={styles.hero}>
@@ -218,19 +225,25 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.buttonText}>Conocer Cultura y Gastronomía</Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: UI.bg },
-  content: { padding: 18, paddingBottom: 30 },
-  header: {
+  safeArea: { flex: 1, backgroundColor: UI.bg },
+  topHeaderBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+    backgroundColor: UI.card,
+    borderBottomWidth: 1,
+    borderBottomColor: UI.border,
   },
+  container: { flex: 1, backgroundColor: UI.bg },
+  content: { padding: 18, paddingBottom: 30 },
   brand: { flexDirection: 'row', alignItems: 'center' },
   brandText: { color: UI.text, fontSize: 17, fontWeight: '800', letterSpacing: 1.5, marginLeft: 8 },
   headerIcons: { flexDirection: 'row', alignItems: 'center' },

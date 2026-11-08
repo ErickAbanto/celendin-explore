@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform, StatusBar } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,11 +13,16 @@ const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
   const insets = useSafeAreaInsets();
-  const bottomPad = Math.max(insets.bottom, 8);
+  const bottomPad = Math.max(insets.bottom, 10);
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? StatusBar.currentHeight || 28 : 0
+  );
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        headerStatusBarHeight: topInset,
         headerStyle: {
           backgroundColor: COLORS.card,
           borderBottomWidth: 1,

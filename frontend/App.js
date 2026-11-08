@@ -21,7 +21,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer theme={AppTheme}>
-        <StatusBar barStyle="light-content" backgroundColor={COLORS.card} />
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor={COLORS.card}
+          translucent={false}
+        />
         <TabNavigator />
       </NavigationContainer>
     </SafeAreaProvider>
