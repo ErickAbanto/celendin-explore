@@ -71,31 +71,42 @@ export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [atractivos, setAtractivos] = useState(ATRACTIVOS_INICIALES);
   const [indiceActivo, setIndiceActivo] = useState(0);
+  const indiceRef = useRef(0);
+  const arrastrandoRef = useRef(false);
   const carouselRef = useRef(null);
 
   useEffect(() => {
     let activo = true;
     getPlaces()
-      .then((data) => activo && data?.length && setAtractivos(data))
+      .then((data) => {
+        if (activo && data?.length) {
+          setAtractivos(data);
+          indiceRef.current = 0;
+          setIndiceActivo(0);
+        }
+      })
       .catch(() => {});
     return () => {
       activo = false;
     };
   }, []);
 
-  // Auto-rotación del carrusel "Destinos en Celendín" cada 3 segundos
+  // Rotación continua e infinita: al llegar al último vuelve al primero (0) sin detenerse
   useEffect(() => {
-    if (!atractivos.length) return;
+    const total = atractivos.length;
+    if (!total) return;
+
     const timer = setInterval(() => {
-      setIndiceActivo((prev) => {
-        const siguiente = (prev + 1) % atractivos.length;
-        carouselRef.current?.scrollTo({
-          x: siguiente * CARD_STEP,
-          animated: true,
-        });
-        return siguiente;
+      if (arrastrandoRef.current) return;
+      const siguiente = (indiceRef.current + 1) % total;
+      indiceRef.current = siguiente;
+      setIndiceActivo(siguiente);
+      carouselRef.current?.scrollTo({
+        x: siguiente * CARD_STEP,
+        animated: true,
       });
-    }, 3000);
+    }, 2800);
+
     return () => clearInterval(timer);
   }, [atractivos.length]);
 
@@ -187,12 +198,20 @@ export default function HomeScreen({ navigation }) {
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.carousel}
-        contentContainerStyle={{ paddingRight: 18 }}
+        contentContainerStyle={{ paddingRight: 180 }}
         snapToInterval={CARD_STEP}
         decelerationRate="fast"
-        onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / CARD_STEP);
-          if (idx >= 0 && idx < atractivos.length) setIndiceActivo(idx);
+        onScrollBeginDrag={() => {
+          arrastrandoRef.current = true;
+        }}
+        onScrollEndDrag={(e) => {
+          arrastrandoRef.current = false;
+          const idx = Math.max(
+            0,
+            Math.min(atractivos.length - 1, Math.round(e.nativeEvent.contentOffset.x / CARD_STEP))
+          );
+          indiceRef.current = idx;
+          setIndiceActivo(idx);
         }}
       >
         {atractivos.map((item, idx) => (
@@ -234,6 +253,7 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity
             key={item._id || item.nombre || idx}
             onPress={() => {
+              indiceRef.current = idx;
               setIndiceActivo(idx);
               carouselRef.current?.scrollTo({ x: idx * CARD_STEP, animated: true });
             }}
