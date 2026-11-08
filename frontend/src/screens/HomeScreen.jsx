@@ -1,8 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Image, Linking, Platform, StatusBar } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getPlaces, getImageUrl } from '../services/api';
+
+const CARD_WIDTH = 195;
+const CARD_GAP = 12;
+const CARD_STEP = CARD_WIDTH + CARD_GAP;
 
 const ATRACTIVOS_INICIALES = [
   {
@@ -66,6 +70,8 @@ function abrirComoLlegar(item) {
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [atractivos, setAtractivos] = useState(ATRACTIVOS_INICIALES);
+  const [indiceActivo, setIndiceActivo] = useState(0);
+  const carouselRef = useRef(null);
 
   useEffect(() => {
     let activo = true;
@@ -76,6 +82,22 @@ export default function HomeScreen({ navigation }) {
       activo = false;
     };
   }, []);
+
+  // Auto-rotación del carrusel "Destinos en Celendín" cada 3 segundos
+  useEffect(() => {
+    if (!atractivos.length) return;
+    const timer = setInterval(() => {
+      setIndiceActivo((prev) => {
+        const siguiente = (prev + 1) % atractivos.length;
+        carouselRef.current?.scrollTo({
+          x: siguiente * CARD_STEP,
+          animated: true,
+        });
+        return siguiente;
+      });
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [atractivos.length]);
 
   const topNotchSpace = Math.max(
     insets.top,
@@ -160,11 +182,23 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.sectionLink}>Ver todos ›</Text>
         </TouchableOpacity>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
-        {atractivos.map((item) => (
+      <ScrollView
+        ref={carouselRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.carousel}
+        contentContainerStyle={{ paddingRight: 18 }}
+        snapToInterval={CARD_STEP}
+        decelerationRate="fast"
+        onMomentumScrollEnd={(e) => {
+          const idx = Math.round(e.nativeEvent.contentOffset.x / CARD_STEP);
+          if (idx >= 0 && idx < atractivos.length) setIndiceActivo(idx);
+        }}
+      >
+        {atractivos.map((item, idx) => (
           <TouchableOpacity
             key={item._id || item.nombre}
-            style={styles.serviceCard}
+            style={[styles.serviceCard, idx === indiceActivo && styles.serviceCardActive]}
             activeOpacity={0.88}
             onPress={() => navigation.navigate('Atractivos', { lugarElegido: item.nombre })}
           >
@@ -193,6 +227,20 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      {/* Indicadores de rotación automática */}
+      <View style={styles.dotsRow}>
+        {atractivos.map((item, idx) => (
+          <TouchableOpacity
+            key={item._id || item.nombre || idx}
+            onPress={() => {
+              setIndiceActivo(idx);
+              carouselRef.current?.scrollTo({ x: idx * CARD_STEP, animated: true });
+            }}
+            style={[styles.dot, idx === indiceActivo && styles.dotActive]}
+          />
+        ))}
+      </View>
 
       {/* Datos clave de Celendín */}
       <View style={styles.statsRow}>
@@ -288,13 +336,33 @@ const styles = StyleSheet.create({
   sectionLink: { color: UI.purpleLight, fontSize: 13, fontWeight: '600' },
   carousel: { marginHorizontal: -18, paddingLeft: 18 },
   serviceCard: {
-    width: 195,
-    marginRight: 12,
+    width: CARD_WIDTH,
+    marginRight: CARD_GAP,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: UI.border,
     overflow: 'hidden',
     backgroundColor: UI.card,
+  },
+  serviceCardActive: {
+    borderColor: UI.purpleLight,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: UI.border,
+    marginHorizontal: 4,
+  },
+  dotActive: {
+    width: 22,
+    backgroundColor: UI.purpleLight,
   },
   serviceImgBox: {
     width: '100%',
