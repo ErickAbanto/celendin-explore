@@ -15,20 +15,24 @@ import { WebView } from 'react-native-webview';
 import { COLORS } from '../constants/theme';
 import { getImageUrl } from '../services/api';
 
-function parseIframeOrUrl(raw) {
+function obtenerSrcDelIframe(raw) {
   if (!raw || typeof raw !== 'string' || !raw.trim()) {
-    return { embedSrc: null, lat: null, lng: null };
+    return null;
   }
   const texto = raw.trim();
   const srcMatch = texto.match(/src=["']([^"']+)["']/i);
-  const embedSrc = srcMatch ? srcMatch[1] : texto;
-  const lngMatch = embedSrc.match(/!2d(-?\d+(?:\.\d+)?)/);
-  const latMatch = embedSrc.match(/!3d(-?\d+(?:\.\d+)?)/);
-  return {
-    embedSrc,
-    lat: latMatch ? parseFloat(latMatch[1]) : null,
-    lng: lngMatch ? parseFloat(lngMatch[1]) : null,
-  };
+  return srcMatch ? srcMatch[1] : texto;
+}
+
+function obtenerDestinoParaRuta(embedSrc, nombreLugar) {
+  if (embedSrc) {
+    const lngMatch = embedSrc.match(/!2d(-?\d+(?:\.\d+)?)/);
+    const latMatch = embedSrc.match(/!3d(-?\d+(?:\.\d+)?)/);
+    if (latMatch && lngMatch) {
+      return `${latMatch[1]},${lngMatch[1]}`;
+    }
+  }
+  return encodeURIComponent(`${nombreLugar}, Celendín, Cajamarca, Perú`);
 }
 
 export default function PlaceDetailScreen({ lugar, onBack }) {
@@ -44,13 +48,7 @@ export default function PlaceDetailScreen({ lugar, onBack }) {
   if (!lugar) return null;
 
   const imgUri = lugar.imagenUrl || getImageUrl(lugar.imagen);
-
-  // Soporta pegar tanto el código <iframe src="..."></iframe> como el link directo
-  const parsed = parseIframeOrUrl(lugar.mapEmbedUrl);
-  const embedSrc = parsed.embedSrc;
-  const lat = lugar.lat ?? parsed.lat;
-  const lng = lugar.lng ?? parsed.lng;
-  const tieneUbicacion = Boolean(embedSrc || (lat && lng));
+  const embedSrc = obtenerSrcDelIframe(lugar.mapEmbedUrl);
 
   const iframeHtml = embedSrc
     ? `<!DOCTYPE html>
@@ -74,20 +72,14 @@ export default function PlaceDetailScreen({ lugar, onBack }) {
     : '';
 
   const abrirComoLlegar = () => {
-    const destination =
-      lat && lng
-        ? `${lat},${lng}`
-        : encodeURIComponent(lugar.mapsQuery || `${lugar.nombre}, Celendín, Cajamarca, Perú`);
+    const destination = obtenerDestinoParaRuta(embedSrc, lugar.nombre);
     Linking.openURL(
       `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`
     );
   };
 
   const abrirVerEnMapa = () => {
-    const query =
-      lat && lng
-        ? `${lat},${lng}`
-        : encodeURIComponent(lugar.mapsQuery || `${lugar.nombre}, Celendín, Cajamarca, Perú`);
+    const query = obtenerDestinoParaRuta(embedSrc, lugar.nombre);
     Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
   };
 
@@ -153,70 +145,55 @@ export default function PlaceDetailScreen({ lugar, onBack }) {
               <Text style={styles.infoValue}>{lugar.horario}</Text>
             </View>
           </View>
-
-          {lat && lng && (
-            <View style={styles.infoItem}>
-              <View style={[styles.iconBox, { backgroundColor: '#2A1458' }]}>
-                <Ionicons name="compass" size={18} color={COLORS.primary} />
-              </View>
-              <View style={styles.infoTextWrap}>
-                <Text style={styles.infoLabel}>Coordenadas GPS Exactas</Text>
-                <Text style={styles.infoValue}>
-                  Latitud: {Number(lat).toFixed(6)} · Longitud: {Number(lng).toFixed(6)}
-                </Text>
-              </View>
-            </View>
-          )}
         </View>
 
-        {/* Mapa interactivo embebido de Google Maps (si ya tiene su iframe) */}
-        {!!embedSrc && (
-          <View style={styles.embedMapCard}>
-            <View style={styles.embedMapHeader}>
-              <Ionicons name="map" size={17} color={COLORS.primary} />
-              <Text style={styles.embedMapTitle}>Mapa Satelital en Vivo (Google Maps)</Text>
+        {/* Mapa interactivo embebido de Google Maps (si ya tiene su iframe en data.js) */}
+        {embedSrc ? (
+          <>
+            <View style={styles.embedMapCard}>
+              <View style={styles.embedMapHeader}>
+                <Ionicons name="map" size={17} color={COLORS.primary} />
+                <Text style={styles.embedMapTitle}>Mapa Satelital en Vivo (Google Maps)</Text>
+              </View>
+              <View style={styles.embedMapBox}>
+                {Platform.OS === 'web' ? (
+                  <iframe
+                    src={embedSrc}
+                    style={{ width: '100%', height: '100%', border: 0 }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                  />
+                ) : (
+                  <WebView
+                    originWhitelist={['*']}
+                    source={{ html: iframeHtml }}
+                    style={styles.webview}
+                    javaScriptEnabled
+                    domStorageEnabled
+                    nestedScrollEnabled
+                  />
+                )}
+              </View>
             </View>
-            <View style={styles.embedMapBox}>
-              {Platform.OS === 'web' ? (
-                <iframe
-                  src={embedSrc}
-                  style={{ width: '100%', height: '100%', border: 0 }}
-                  allowFullScreen
-                  loading="lazy"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                />
-              ) : (
-                <WebView
-                  originWhitelist={['*']}
-                  source={{ html: iframeHtml }}
-                  style={styles.webview}
-                  javaScriptEnabled
-                  domStorageEnabled
-                  nestedScrollEnabled
-                />
-              )}
+
+            <View style={styles.mapsSection}>
+              <TouchableOpacity style={styles.primaryMapBtn} onPress={abrirComoLlegar}>
+                <Ionicons name="navigate" size={18} color="#FFF" />
+                <Text style={styles.primaryMapBtnText}>Cómo llegar en Google Maps (Ruta GPS)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.secondaryMapBtn} onPress={abrirVerEnMapa}>
+                <Ionicons name="map-outline" size={17} color={COLORS.primary} />
+                <Text style={styles.secondaryMapBtnText}>Abrir en la App de Google Maps</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-        )}
-
-        {/* Botones de Google Maps (si ya tiene su ubicación) o espacio libre */}
-        {tieneUbicacion ? (
-          <View style={styles.mapsSection}>
-            <TouchableOpacity style={styles.primaryMapBtn} onPress={abrirComoLlegar}>
-              <Ionicons name="navigate" size={18} color="#FFF" />
-              <Text style={styles.primaryMapBtnText}>Cómo llegar en Google Maps (Ruta GPS)</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.secondaryMapBtn} onPress={abrirVerEnMapa}>
-              <Ionicons name="map-outline" size={17} color={COLORS.primary} />
-              <Text style={styles.secondaryMapBtnText}>Abrir en la App de Google Maps</Text>
-            </TouchableOpacity>
-          </View>
+          </>
         ) : (
           <View style={styles.pendingMapBox}>
             <Ionicons name="location-outline" size={20} color={COLORS.primary} />
             <Text style={styles.pendingMapText}>
-              Espacio libre para ubicación de Google Maps (pega tu {'<iframe>'} en ServicesScreen.jsx o data.js)
+              Espacio libre para ubicación de Google Maps (pega tu {'<iframe>'} en mapEmbedUrl dentro de backend/data.js)
             </Text>
           </View>
         )}

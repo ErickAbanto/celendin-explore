@@ -1,0 +1,80 @@
+[
+  {
+    "nombre": "Plaza de Armas e Iglesia Virgen del Carmen",
+    "ubicacion": "Centro Histórico de Celendín · 2,625 m s.n.m.",
+    "distancia": "Km 0 de la ciudad (a 107 km / 2 h 30 min de Cajamarca)",
+    "categoria": "Patrimonio",
+    "horario": "Plaza: 24 h · Iglesia Matriz: 7:00 am – 8:00 pm (Ingreso libre)",
+    "desc": "Trazada el 5 de mayo de 1796 por iniciativa del obispo Baltasar Jaime Martínez Compañón y el agrimensor José Comesana con colonos españoles y portugueses. Es una de las plazas mayores más grandes del Perú (dos manzanas en cuadrícula perfecta), con pisos de cuarcita, pileta central y árboles centenarios.",
+    "historia": "Frente a la plaza se alza la Iglesia Matriz Virgen del Carmen (inicios del siglo XIX), edificada en adobe y tapial con dos torres gemelas. Resguarda altares tallados en madera y la famosa imagen del Cristo Crucificado, que según la tradición histórica celendina fue esculpida sobre la osamenta real de un joven devoto local.",
+    "actividades": "Fotografía arquitectónica, visita al templo neoclásico, paseo por casonas coloniales y degustación de chocolate y dulces en los alrededores.",
+    "imagen": "/images/plaza-armas.jpg",
+    "mapEmbedUrl": "",
+    "orden": 1
+  },
+  {
+    "nombre": "Mirador de San Isidro y Cristo Redentor",
+    "ubicacion": "Colina Oeste de Celendín · 2,680 m s.n.m.",
+    "distancia": "A 1 km de la Plaza de Armas (4 cuadras / 12 min a pie por escalinatas)",
+    "categoria": "Mirador",
+    "horario": "6:00 am – 9:00 pm · Ingreso libre",
+    "desc": "Principal balcón natural urbano de Celendín. Desde su cima se contempla en 360° el famoso trazo geométrico en damero (tablero de ajedrez) de la ciudad, sus tejados rojizos y la amplitud del valle interandino bajo el cielo azul.",
+    "historia": "En 1920 se edificó en la cima la capilla de adobe y teja en honor a San Isidro Labrador. En el año 2005, el escultor celendino Miguel Díaz Dávila levantó la monumental estatua blanca del Cristo Redentor de 10 metros de altura con los brazos extendidos bendiciendo al pueblo shilico.",
+    "actividades": "Caminata por las escalinatas, vista panorámica del atardecer celendino y visita a la capilla de San Isidro.",
+    "imagen": "/images/mirador-san-isidro.jpg",
+    "mapEmbedUrl": "https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d331.3138938730578!2d-78.15001123933955!3d-6.8656265750422385!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x91b3cdd16787d919%3A0x319dd0e05cbbf977!2sMirador%20de%20Celendin!5e1!3m2!1ses-419!2spe!4v1794164257420!5m2!1ses-419!2spe",
+    "orden": 2
+  },
+  {
+    "nombre": "Catarata El Cornelio y Aguas de Llanguat",
+    "ubicacion": "C.P. Chilac N.° 8 (Huasmín, 2,840 m) y Valle de Llanguat (2,100 m s.n.m.)",
+    "distancia": "Cornelio: ~28 km vía Jerez–Huasmín · Llanguat: ~18 km al norte de Celendín",
+    "categoria": "Naturaleza",
+    "horario": "7:00 am – 5:00 pm · Entrada referencial: S/ 2 a S/ 5",
+    "desc": "La Catarata El Cornelio (sector Jamich, Huasmín) se alimenta de las aguas cristalinas del río Jadibamba, precipitándose entre farallones de roca y vegetación de jalca y ceja de selva. Muy cerca, el valle de Llanguat ofrece pozas termo-medicinales entre 40 °C y 44 °C.",
+    "historia": "Llanguat ha sido históricamente el \"Edén agrícola\" de Celendín en la margen derecha del río Sendamal, célebre por sus haciendas cañeras, trapiches artesanales de chancaca y aguardiente, y sus fuentes termales ricas en minerales para dolencias óseas y reumáticas.",
+    "actividades": "Trekking ecológico hacia las caídas del río Jadibamba, baños termales en las pozas de Llanguat y avistamiento de flora y aves andinas.",
+    "imagen": "/images/catarata-cornelio.jpg",
+    "mapEmbedUrl": "",
+    "orden": 3
+  },
+  {
+    "nombre": "Parque El Sombrero y Museo del Marañón",
+    "ubicacion": "Zona Urbana de Celendín · 2,625 m s.n.m.",
+    "distancia": "A 800 m de la Plaza de Armas (5 min en mototaxi o 10 min a pie)",
+    "categoria": "Cultura",
+    "horario": "Parque: 24 h · Museo Regional: 8:30 am – 5:00 pm",
+    "desc": "El Parque El Sombrero luce una escultura gigante en homenaje al sombrero shilico de paja toquilla, símbolo de identidad provincial tejido 100% a mano por artesanas celendinas y moldeado por maestros enfrenadores con paja procedente de Rioja y Moyobamba.",
+    "historia": "El circuito cultural se completa con el Museo Regional del Marañón \"Gregorio Sánchez Araujo\", que conserva cerámicos, textiles, armas líticas y metalurgia de las culturas preincas Cajamarca, Chachapoyas e Inca, además de restos paleontológicos locales.",
+    "actividades": "Recorrido por el monumento al sombrero, visita guiada al Museo del Marañón y compra directa a tejedores en la feria dominical.",
+    "imagen": "/images/sombrero-shilico.jpg",
+    "mapEmbedUrl": "",
+    "orden": 4
+  },
+  {
+    "nombre": "Cerro Jelij y Mirador del Cañón del Marañón",
+    "ubicacion": "Cordillera Oriental de Celendín · 2,950 m s.n.m.",
+    "distancia": "A 4 km al este de la ciudad de Celendín (ruta hacia Balsas / Amazonas)",
+    "categoria": "Aventura",
+    "horario": "6:00 am – 5:00 pm · Acceso libre",
+    "desc": "Imponente cumbre tutelar que domina tanto la campiña de Celendín como el vertiginoso descenso hacia el profundo Cañón del río Marañón, donde la carretera desciende desde los 2,950 m hasta los 850 m s.n.m. en el puente Chacanto.",
+    "historia": "El Cerro Jelij posee un enorme valor paleontológico y científico: en sus laderas se hallaron los restos fósiles de un megaterio (perezoso gigante prehistórico de unas 4 toneladas) que habitó la región hace más de 10,000 años en la era Cuaternaria.",
+    "actividades": "Senderismo de montaña, observación de los meandros del río Marañón y fotografía paisajística de alta montaña.",
+    "imagen": "/images/celendin-hero.jpg",
+    "mapEmbedUrl": "<iframe src=\"https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d584.1532930796857!2d-78.11469253749826!3d-6.8766012547832185!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x91b3cd957141df7b%3A0xd51d57c99698af0c!2sLa%20fila%20de%20%22Lanche%22%20Jelig!5e1!3m2!1ses-419!2spe!4v1794165686615!5m2!1ses-419!2spe\" width=\"600\" height=\"450\" style=\"border:0;\" allowfullscreen=\"\" loading=\"lazy\" referrerpolicy=\"strict-origin-when-cross-origin\"></iframe>",
+    "orden": 5
+  },
+  {
+    "nombre": "Complejo Arqueológico La Chocta",
+    "ubicacion": "Cima del Cerro La Chocta, Distrito de Oxamarca · 3,320 m s.n.m.",
+    "distancia": "A 42 km al sur de Celendín (hasta Oxamarca) + 10 km hacia la ciudadela",
+    "categoria": "Arqueología",
+    "horario": "7:00 am – 4:30 pm · Ingreso libre",
+    "desc": "Uno de los complejos arqueológicos prehispánicos más monumentales del oriente de Cajamarca. Se levanta en la cresta de un acantilado inexpugnable rodeado de bosques de neblina y abismos cordilleranos.",
+    "historia": "Data del periodo Intermedio Tardío (entre los siglos XI y XV d.C.), con arquitectura de piedra laja unida con argamasa, murallas perimétricas, torreones de vigilancia, plazas ceremoniales y chullpas funerarias de dos y tres pisos que controlaban el paso entre los Andes y la ceja de selva.",
+    "actividades": "Exploración arqueológica de chullpas y torreones, caminata por cumbres altoandinas y observación de paisajes nubosos.",
+    "imagen": "/images/mirador-san-isidro.jpg",
+    "mapEmbedUrl": "",
+    "orden": 6
+  }
+]
