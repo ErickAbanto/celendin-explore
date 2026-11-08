@@ -91,24 +91,41 @@ export default function HomeScreen({ navigation }) {
     };
   }, []);
 
-  // Rotación continua e infinita: al llegar al último vuelve al primero (0) sin detenerse
+  // Carrusel circular infinito: duplica la lista para que al lado de la última imagen
+  // ya aparezca inmediatamente la primera imagen y el giro sea continuo sin espacios vacíos
+  const total = atractivos.length;
+  const listaCircular = total > 0 ? [...atractivos, ...atractivos] : [];
+
   useEffect(() => {
-    const total = atractivos.length;
     if (!total) return;
+    let resetTimeout = null;
 
     const timer = setInterval(() => {
       if (arrastrandoRef.current) return;
-      const siguiente = (indiceRef.current + 1) % total;
-      indiceRef.current = siguiente;
-      setIndiceActivo(siguiente);
+      const siguientePos = indiceRef.current + 1;
+      indiceRef.current = siguientePos;
+      setIndiceActivo(siguientePos % total);
+
       carouselRef.current?.scrollTo({
-        x: siguiente * CARD_STEP,
+        x: siguientePos * CARD_STEP,
         animated: true,
       });
+
+      // Cuando llega a la primera tarjeta de la segunda vuelta, tras terminar la animación
+      // salta de forma invisible a x: 0 (que muestra exactamente las mismas tarjetas)
+      if (siguientePos >= total) {
+        resetTimeout = setTimeout(() => {
+          indiceRef.current = 0;
+          carouselRef.current?.scrollTo({ x: 0, animated: false });
+        }, 500);
+      }
     }, 2800);
 
-    return () => clearInterval(timer);
-  }, [atractivos.length]);
+    return () => {
+      clearInterval(timer);
+      if (resetTimeout) clearTimeout(resetTimeout);
+    };
+  }, [total]);
 
   const topNotchSpace = Math.max(
     insets.top,
@@ -198,7 +215,7 @@ export default function HomeScreen({ navigation }) {
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.carousel}
-        contentContainerStyle={{ paddingRight: 180 }}
+        contentContainerStyle={{ paddingRight: 18 }}
         snapToInterval={CARD_STEP}
         decelerationRate="fast"
         onScrollBeginDrag={() => {
@@ -206,18 +223,20 @@ export default function HomeScreen({ navigation }) {
         }}
         onScrollEndDrag={(e) => {
           arrastrandoRef.current = false;
-          const idx = Math.max(
-            0,
-            Math.min(atractivos.length - 1, Math.round(e.nativeEvent.contentOffset.x / CARD_STEP))
-          );
-          indiceRef.current = idx;
-          setIndiceActivo(idx);
+          if (!total) return;
+          const rawIdx = Math.max(0, Math.round(e.nativeEvent.contentOffset.x / CARD_STEP));
+          const modIdx = rawIdx % total;
+          indiceRef.current = modIdx;
+          setIndiceActivo(modIdx);
+          if (rawIdx >= total) {
+            carouselRef.current?.scrollTo({ x: modIdx * CARD_STEP, animated: false });
+          }
         }}
       >
-        {atractivos.map((item, idx) => (
+        {listaCircular.map((item, idx) => (
           <TouchableOpacity
-            key={item._id || item.nombre}
-            style={[styles.serviceCard, idx === indiceActivo && styles.serviceCardActive]}
+            key={`${item._id || item.nombre}-${idx}`}
+            style={[styles.serviceCard, idx % total === indiceActivo && styles.serviceCardActive]}
             activeOpacity={0.88}
             onPress={() => navigation.navigate('Atractivos', { lugarElegido: item.nombre })}
           >
