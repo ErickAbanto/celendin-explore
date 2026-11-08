@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, Image } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Image, TouchableOpacity, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import { getGalleryImages, getImageUrl } from '../services/api';
@@ -16,12 +16,12 @@ const GALERIA_RESPALDO = [
 const FICHA_PROVINCIAL = [
   { icono: 'navigate-outline', label: 'Ubicación', valor: 'Región Cajamarca, Andes del Norte del Perú' },
   { icono: 'trending-up-outline', label: 'Altitud y Clima', valor: '2,625 m s.n.m. · Templado seco (14 °C – 22 °C)' },
-  { icono: 'car-outline', label: 'Distancia desde Cajamarca', valor: '107 km por carretera asfaltada (aprox. 2 h 30 min)' },
+  { icono: 'car-outline', label: 'Ruta Cajamarca → Celendín', valor: '107 km por carretera asfaltada (aprox. 2 h 30 min)' },
   { icono: 'people-outline', label: 'Gentilicio y Apelativo', valor: 'Celendino / Shilico · "El Cielo Azul del Edén"' },
   { icono: 'grid-outline', label: 'Distritos (12)', valor: 'Celendín, Chumuch, Cortegana, Huasmín, Jorge Chávez, José Gálvez, La Libertad de Pallán, Miguel Iglesias, Oxamarca, Sorochuco, Sucre y Utco' },
 ];
 
-export default function ContactScreen() {
+export default function ContactScreen({ navigation }) {
   const [galeria, setGaleria] = useState(GALERIA_RESPALDO);
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function ContactScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.headerTitle}>Guía del Viajero</Text>
-      <Text style={styles.headerSub}>Información esencial y galería fotográfica de Celendín servida desde el Backend:</Text>
+      <Text style={styles.headerSub}>Información esencial, cómo llegar en Google Maps y galería de Celendín:</Text>
 
       {/* Ficha informativa */}
       <View style={styles.infoBox}>
@@ -52,6 +52,28 @@ export default function ContactScreen() {
             </View>
           </View>
         ))}
+
+        <View style={styles.guideButtons}>
+          <TouchableOpacity
+            style={styles.mapsMainBtn}
+            onPress={() =>
+              Linking.openURL(
+                'https://www.google.com/maps/dir/?api=1&destination=-6.8660,-78.1458&travelmode=driving'
+              )
+            }
+          >
+            <Ionicons name="navigate" size={17} color="#FFF" />
+            <Text style={styles.mapsMainBtnText}>Cómo llegar a Celendín (Google Maps)</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.goPlacesBtn}
+            onPress={() => navigation.navigate('Atractivos')}
+          >
+            <Ionicons name="map-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.goPlacesBtnText}>Ver todos los atractivos en el mapa</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Galería de imágenes del Backend */}
@@ -106,6 +128,27 @@ const styles = StyleSheet.create({
   infoTextWrap: { flex: 1 },
   infoLabel: { color: COLORS.primary, fontSize: 12, fontWeight: 'bold' },
   infoVal: { color: COLORS.textMain, fontSize: 13, lineHeight: 19, marginTop: 2 },
+  guideButtons: { marginTop: 14, gap: 10 },
+  mapsMainBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.success,
+    paddingVertical: 13,
+    borderRadius: 10,
+  },
+  mapsMainBtnText: { color: '#FFF', fontSize: 14, fontWeight: 'bold', marginLeft: 8 },
+  goPlacesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E1B36',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    paddingVertical: 11,
+    borderRadius: 10,
+  },
+  goPlacesBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: 'bold', marginLeft: 8 },
   sectionTitle: { color: COLORS.textMain, fontSize: 20, fontWeight: '800', marginBottom: 12 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   photoCard: {

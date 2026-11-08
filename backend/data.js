@@ -6,6 +6,9 @@ const places = [
     horario: 'Acceso libre · Templo: 7:00 am – 8:00 pm',
     desc: 'Una de las plazas mayores más amplias y bellas del Perú, con pisos de cuarcita, pileta central y la majestuosa Catedral Virgen del Carmen de torres ajedrezadas.',
     imagen: '/images/plaza-armas.jpg',
+    lat: -6.8660,
+    lng: -78.1458,
+    mapsQuery: 'Plaza de Armas de Celendin, Cajamarca, Peru',
     orden: 1,
   },
   {
@@ -15,6 +18,9 @@ const places = [
     horario: '6:00 am – 9:00 pm',
     desc: 'Colina panorámica coronada por la imponente estatua blanca del Cristo Redentor, desde donde se aprecia el trazo perfecto en damero de la ciudad y todo el valle.',
     imagen: '/images/mirador-san-isidro.jpg',
+    lat: -6.8679,
+    lng: -78.1518,
+    mapsQuery: 'Mirador San Isidro, Celendin, Cajamarca, Peru',
     orden: 2,
   },
   {
@@ -24,6 +30,9 @@ const places = [
     horario: '7:00 am – 5:00 pm',
     desc: 'Imponente caída de agua rodeada de vegetación andina y las famosas pozas termo-medicinales de Llanguat (más de 40 °C), ideales para el descanso y la salud.',
     imagen: '/images/catarata-cornelio.jpg',
+    lat: -6.7845,
+    lng: -78.1722,
+    mapsQuery: 'Baños Termales de Llanguat, Celendin, Cajamarca, Peru',
     orden: 3,
   },
   {
@@ -33,6 +42,9 @@ const places = [
     horario: '8:30 am – 5:30 pm',
     desc: 'Monumento gigante dedicado al sombrero shilico de paja toquilla y el Museo Regional Gregorio Sánchez Araujo con piezas preincas, incas y fósiles locales.',
     imagen: '/images/sombrero-shilico.jpg',
+    lat: -6.8615,
+    lng: -78.1452,
+    mapsQuery: 'Parque El Sombrero, Celendin, Cajamarca, Peru',
     orden: 4,
   },
   {
@@ -42,6 +54,9 @@ const places = [
     horario: '6:00 am – 5:00 pm',
     desc: 'Mirador natural de gran altitud que domina los valles interandinos y el profundo cañón del río Marañón, famoso también por sus hallazgos paleontológicos.',
     imagen: '/images/celendin-hero.jpg',
+    lat: -6.8520,
+    lng: -78.1280,
+    mapsQuery: 'Cerro Jelij, Celendin, Cajamarca, Peru',
     orden: 5,
   },
   {
@@ -51,6 +66,9 @@ const places = [
     horario: '7:00 am – 4:30 pm',
     desc: 'Antigua ciudadela preincaica de piedra con chullpas y estructuras defensivas enclavadas sobre las cumbres nubosas del sur de la provincia de Celendín.',
     imagen: '/images/mirador-san-isidro.jpg',
+    lat: -7.0436,
+    lng: -78.0694,
+    mapsQuery: 'Complejo Arqueologico La Chocta, Oxamarca, Celendin, Peru',
     orden: 6,
   },
 ];

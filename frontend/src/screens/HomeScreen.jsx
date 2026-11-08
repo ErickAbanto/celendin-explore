@@ -1,13 +1,46 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, ImageBackground } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, ImageBackground, Linking } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getPlaces, getImageUrl } from '../services/api';
 
 const ATRACTIVOS_INICIALES = [
-  { _id: '1', nombre: 'Plaza de Armas y Catedral', categoria: 'Patrimonio', imagen: '/images/plaza-armas.jpg' },
-  { _id: '2', nombre: 'Mirador de San Isidro', categoria: 'Mirador', imagen: '/images/mirador-san-isidro.jpg' },
-  { _id: '3', nombre: 'Catarata El Cornelio', categoria: 'Naturaleza', imagen: '/images/catarata-cornelio.jpg' },
-  { _id: '4', nombre: 'Parque del Sombrero Shilico', categoria: 'Cultura', imagen: '/images/sombrero-shilico.jpg' },
+  {
+    _id: '1',
+    nombre: 'Plaza de Armas e Iglesia Virgen del Carmen',
+    categoria: 'Patrimonio',
+    imagen: '/images/plaza-armas.jpg',
+    lat: -6.8660,
+    lng: -78.1458,
+    mapsQuery: 'Plaza de Armas de Celendin, Cajamarca, Peru',
+  },
+  {
+    _id: '2',
+    nombre: 'Mirador de San Isidro y Cristo Redentor',
+    categoria: 'Mirador',
+    imagen: '/images/mirador-san-isidro.jpg',
+    lat: -6.8679,
+    lng: -78.1518,
+    mapsQuery: 'Mirador San Isidro, Celendin, Cajamarca, Peru',
+  },
+  {
+    _id: '3',
+    nombre: 'Catarata El Cornelio y Aguas de Llanguat',
+    categoria: 'Naturaleza',
+    imagen: '/images/catarata-cornelio.jpg',
+    lat: -6.7845,
+    lng: -78.1722,
+    mapsQuery: 'Baños Termales de Llanguat, Celendin, Cajamarca, Peru',
+  },
+  {
+    _id: '4',
+    nombre: 'Parque del Sombrero y Museo del Marañón',
+    categoria: 'Cultura',
+    imagen: '/images/sombrero-shilico.jpg',
+    lat: -6.8615,
+    lng: -78.1452,
+    mapsQuery: 'Parque El Sombrero, Celendin, Cajamarca, Peru',
+  },
 ];
 
 // Paleta oscura + morado neón (mismo diseño de referencia)
@@ -23,7 +56,15 @@ const UI = {
   muted: '#A1A1B5',
 };
 
+function abrirComoLlegar(item) {
+  const dest = item.lat && item.lng
+    ? `${item.lat},${item.lng}`
+    : encodeURIComponent(item.mapsQuery || `${item.nombre}, Celendín, Cajamarca, Perú`);
+  Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`);
+}
+
 export default function HomeScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [atractivos, setAtractivos] = useState(ATRACTIVOS_INICIALES);
 
   useEffect(() => {
@@ -37,7 +78,10 @@ export default function HomeScreen({ navigation }) {
   }, []);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top + 12, 28) }]}
+    >
       {/* Encabezado */}
       <View style={styles.header}>
         <View style={styles.brand}>
@@ -45,10 +89,16 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.brandText}>CELENDÍN EXPLORE</Text>
         </View>
         <View style={styles.headerIcons}>
-          <TouchableOpacity onPress={() => navigation.navigate('Atractivos')}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => navigation.navigate('Atractivos')}
+          >
             <Ionicons name="map-outline" size={20} color={UI.text} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Guía')} style={{ marginLeft: 16 }}>
+          <TouchableOpacity
+            style={[styles.iconBtn, { marginLeft: 10 }]}
+            onPress={() => navigation.navigate('Guía')}
+          >
             <Ionicons name="images-outline" size={20} color={UI.text} />
           </TouchableOpacity>
         </View>
@@ -69,15 +119,29 @@ export default function HomeScreen({ navigation }) {
           CELENDÍN<Text style={styles.titleAccent}> EXPLORE</Text>
         </Text>
         <Text style={styles.subtitle}>
-          Guía informativa de la Tierra del Sombrero de Paja Toquilla y el Chocolate Artesanal en los Andes de Cajamarca.
+          Guía informativa y rutas GPS de la Tierra del Sombrero de Paja Toquilla y el Chocolate Artesanal en Cajamarca.
         </Text>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => navigation.navigate('Atractivos')}
-        >
-          <Text style={styles.primaryButtonText}>Explorar Atractivos</Text>
-          <Ionicons name="arrow-forward" size={14} color="#FFF" style={{ marginLeft: 8 }} />
-        </TouchableOpacity>
+        <View style={styles.heroButtonsRow}>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => navigation.navigate('Atractivos')}
+          >
+            <Text style={styles.primaryButtonText}>Explorar Atractivos</Text>
+            <Ionicons name="arrow-forward" size={14} color="#FFF" style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.mapHeroBtn}
+            onPress={() =>
+              Linking.openURL(
+                'https://www.google.com/maps/dir/?api=1&destination=-6.8660,-78.1458&travelmode=driving'
+              )
+            }
+          >
+            <Ionicons name="navigate" size={14} color={UI.purpleLight} />
+            <Text style={styles.mapHeroBtnText}>Ruta a Celendín</Text>
+          </TouchableOpacity>
+        </View>
       </ImageBackground>
 
       {/* Carrusel de atractivos con imágenes desde el Backend */}
@@ -93,7 +157,7 @@ export default function HomeScreen({ navigation }) {
             key={item._id || item.nombre}
             style={styles.serviceCard}
             activeOpacity={0.85}
-            onPress={() => navigation.navigate('Atractivos')}
+            onPress={() => navigation.navigate('Atractivos', { lugarElegido: item.nombre })}
           >
             <ImageBackground
               source={{ uri: item.imagenUrl || getImageUrl(item.imagen) }}
@@ -101,10 +165,21 @@ export default function HomeScreen({ navigation }) {
               imageStyle={styles.serviceImgInner}
             >
               <View style={styles.serviceShade} />
-              <View style={styles.categoryPill}>
-                <Text style={styles.categoryPillText}>{item.categoria || 'Destino'}</Text>
+              <View style={styles.cardTopRow}>
+                <View style={styles.categoryPill}>
+                  <Text style={styles.categoryPillText}>{item.categoria || 'Destino'}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.miniMapBtn}
+                  onPress={() => abrirComoLlegar(item)}
+                >
+                  <Ionicons name="navigate" size={13} color="#FFF" />
+                </TouchableOpacity>
               </View>
-              <Text style={styles.serviceName}>{item.nombre}</Text>
+              <View>
+                <Text style={styles.serviceName} numberOfLines={2}>{item.nombre}</Text>
+                <Text style={styles.tapHint}>Toca para ver ruta GPS ›</Text>
+              </View>
             </ImageBackground>
           </TouchableOpacity>
         ))}
@@ -147,7 +222,7 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: UI.bg },
-  content: { padding: 18, paddingTop: 24, paddingBottom: 30 },
+  content: { padding: 18, paddingBottom: 30 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -157,11 +232,21 @@ const styles = StyleSheet.create({
   brand: { flexDirection: 'row', alignItems: 'center' },
   brandText: { color: UI.text, fontSize: 17, fontWeight: '800', letterSpacing: 1.5, marginLeft: 8 },
   headerIcons: { flexDirection: 'row', alignItems: 'center' },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: UI.card,
+    borderWidth: 1,
+    borderColor: UI.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   heroImage: { borderRadius: 20, resizeMode: 'cover', opacity: 0.9 },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 20,
-    backgroundColor: 'rgba(7,7,15,0.58)',
+    backgroundColor: 'rgba(7,7,15,0.62)',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -174,8 +259,8 @@ const styles = StyleSheet.create({
   sectionLink: { color: UI.purpleLight, fontSize: 13, fontWeight: '600' },
   carousel: { marginHorizontal: -18, paddingLeft: 18 },
   serviceCard: {
-    width: 175,
-    height: 205,
+    width: 185,
+    height: 215,
     marginRight: 12,
     borderRadius: 16,
     borderWidth: 1,
@@ -187,23 +272,36 @@ const styles = StyleSheet.create({
   serviceImgInner: { resizeMode: 'cover' },
   serviceShade: {
     ...StyleSheet.absoluteFillObject,
-    top: '40%',
-    backgroundColor: 'rgba(7,7,15,0.75)',
+    top: '35%',
+    backgroundColor: 'rgba(7,7,15,0.78)',
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   categoryPill: {
-    alignSelf: 'flex-start',
     backgroundColor: UI.purple,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   categoryPillText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
-  serviceName: { color: UI.text, fontSize: 14, fontWeight: 'bold', paddingHorizontal: 2, paddingBottom: 2 },
+  miniMapBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceName: { color: UI.text, fontSize: 14, fontWeight: 'bold', paddingHorizontal: 2 },
+  tapHint: { color: UI.purpleLight, fontSize: 11, fontWeight: '600', marginTop: 3, paddingHorizontal: 2 },
   hero: {
     backgroundColor: UI.card,
     borderRadius: 20,
     padding: 22,
-    paddingVertical: 28,
+    paddingVertical: 26,
     borderWidth: 1,
     borderColor: UI.glow,
     shadowColor: UI.purpleLight,
@@ -228,22 +326,38 @@ const styles = StyleSheet.create({
   title: { color: UI.text, fontSize: 31, fontWeight: '800' },
   titleAccent: { color: UI.purpleLight },
   subtitle: { color: '#E2E8F0', fontSize: 14, lineHeight: 21, marginTop: 10 },
+  heroButtonsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: 18,
+    gap: 10,
+  },
   primaryButton: {
-    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: UI.purple,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
     borderRadius: 8,
-    marginTop: 20,
     shadowColor: UI.purple,
     shadowOpacity: 0.7,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 2 },
     elevation: 6,
   },
-  primaryButtonText: { color: '#FFF', fontSize: 14, fontWeight: 'bold' },
+  primaryButtonText: { color: '#FFF', fontSize: 13, fontWeight: 'bold' },
+  mapHeroBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 16, 27, 0.85)',
+    borderWidth: 1,
+    borderColor: UI.purpleLight,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  mapHeroBtnText: { color: '#FFF', fontSize: 13, fontWeight: '600', marginLeft: 6 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 20 },
   statCard: {
     flex: 0.48,

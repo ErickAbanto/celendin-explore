@@ -10,6 +10,9 @@ const Place = mongoose.model(
       horario: { type: String, default: 'Acceso libre' },
       desc: { type: String, required: true },
       imagen: { type: String, required: true },
+      lat: { type: Number, required: true },
+      lng: { type: Number, required: true },
+      mapsQuery: { type: String, default: '' },
       orden: { type: Number, default: 0 },
     },
     { timestamps: true }
