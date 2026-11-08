@@ -8,6 +8,7 @@ const { Place, Culture, GalleryImage } = require('./models');
 const { places, culture, gallery } = require('./data');
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 
