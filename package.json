@@ -1,18 +1,11 @@
 {
-  "name": "erick-tech",
+  "name": "erick-tech-root",
   "version": "1.0.0",
-  "main": "index.js",
-  "dependencies": {
-    "expo": "~58.0.23",
-    "expo-status-bar": "~58.0.4",
-    "react": "19.3.0",
-    "react-native": "0.88.1"
-  },
+  "private": true,
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
-  },
-  "private": true
+    "start": "node start-all.js",
+    "backend": "npm --prefix backend start",
+    "frontend": "npm --prefix frontend start",
+    "seed": "npm --prefix backend run seed"
+  }
 }
