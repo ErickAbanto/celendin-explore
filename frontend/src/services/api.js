@@ -13,18 +13,53 @@ export function getImageUrl(imagenPathOrUrl) {
   return `${API_URL}${imagenPathOrUrl.startsWith('/') ? '' : '/'}${imagenPathOrUrl}`;
 }
 
-async function request(path) {
+async function request(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
-    const res = await fetch(`${API_URL}/api${path}`, { signal: controller.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    const res = await fetch(`${API_URL}/api${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+      signal: controller.signal,
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      const err = new Error(payload?.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.data = payload;
+      throw err;
+    }
+    return payload;
   } finally {
     clearTimeout(timer);
   }
 }
 
 export const getPlaces = () => request('/places');
+export const getDirectory = () => request('/directory');
 export const getCulture = () => request('/culture');
 export const getGalleryImages = () => request('/images');
+
+export const addPlaceReview = (placeId, review) =>
+  request(`/places/${encodeURIComponent(placeId)}/reviews`, {
+    method: 'POST',
+    body: JSON.stringify(review),
+  });
+
+export const addDirectoryReview = (itemId, review) =>
+  request(`/directory/${encodeURIComponent(itemId)}/reviews`, {
+    method: 'POST',
+    body: JSON.stringify(review),
+  });
+
+export const getProfile = (deviceId = 'explorador-shilico') =>
+  request(`/profile/${encodeURIComponent(deviceId)}`);
+
+export const saveProfile = (deviceId = 'explorador-shilico', payload = {}) =>
+  request(`/profile/${encodeURIComponent(deviceId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
