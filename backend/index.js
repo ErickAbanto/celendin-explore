@@ -263,6 +263,10 @@ app.put('/api/places/:placeId', async (req, res) => {
   if (typeof body.mapsQuery === 'string') {
     updates.mapsQuery = body.mapsQuery.trim().slice(0, 160);
   }
+  if (body.esExperienciaHoy !== undefined) {
+    updates.esExperienciaHoy =
+      body.esExperienciaHoy === true || body.esExperienciaHoy === 'true';
+  }
   if (body.tips && typeof body.tips === 'object') {
     updates.tips = {
       llevar: String(body.tips.llevar || 'Calzado cómodo, agua y cámara.')

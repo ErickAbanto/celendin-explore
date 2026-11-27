@@ -31,18 +31,99 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SAVED_CARD_WIDTH = Math.min(SCREEN_WIDTH - 36, 370);
 const SAVED_CARD_GAP = 12;
 
-function describeWeatherCode(code) {
-  if (code === 0) return { desc: 'Soleado', icon: 'sunny-outline' };
-  if (code === 1 || code === 2)
-    return { desc: 'Soleado', icon: 'partly-sunny-outline' };
-  if (code === 3 || code === 45 || code === 48)
-    return { desc: 'Nublado', icon: 'cloud-outline' };
-  if (code >= 51 && code <= 67)
-    return { desc: 'Lluvia ligera', icon: 'rainy-outline' };
-  if (code >= 80 && code <= 82)
-    return { desc: 'Lluvia', icon: 'rainy-outline' };
-  if (code >= 95) return { desc: 'Tormenta', icon: 'thunderstorm-outline' };
-  return { desc: 'Soleado', icon: 'sunny-outline' };
+// Coordenadas y altitud exacta de la ciudad de Celendín, Cajamarca (-6.8659, -78.1449 · elevation=2625 m s.n.m.)
+// Se especifica elevation=2625 y models=ecmwf_ifs025 para obtener la temperatura real de la meseta de Celendín
+// (y no la del fondo cálido del Cañón del Marañón) además de máxima/mínima diaria (ej. 14°C · Nublado · 18°/7°).
+const CELENDIN_WEATHER_URL =
+  'https://api.open-meteo.com/v1/forecast?latitude=-6.8659&longitude=-78.1449&elevation=2625&models=ecmwf_ifs025&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,weather_code,cloud_cover,wind_speed_10m&hourly=precipitation_probability,weather_code&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=America%2FLima';
+
+const CELENDIN_WTTR_BACKUP_URL = 'https://wttr.in/Celendin,Peru?format=j1';
+
+function classifyCelendinWeather({
+  code,
+  isDay = 1,
+  precipitation = 0,
+  cloudCover = 0,
+  nextHourRainProb = 0,
+  nextHourCode = 0,
+}) {
+  // 1. Descargas eléctricas / Tormenta eléctrica (WMO 95, 96, 99)
+  if (code >= 95 || nextHourCode >= 95) {
+    return {
+      desc: 'Descargas eléctricas',
+      detailEs: 'Tormenta activa con actividad eléctrica en la provincia de Celendín',
+      detailEn: 'Active thunderstorm with lightning in Celendín province',
+      icon: 'thunderstorm',
+      iconColor: '#F59E0B',
+    };
+  }
+
+  // 2. Lloviendo en este momento (precipitación > 0 o códigos WMO 51..86)
+  if (
+    precipitation > 0.05 ||
+    (code >= 51 && code <= 67) ||
+    (code >= 80 && code <= 86)
+  ) {
+    return {
+      desc: 'Lloviendo',
+      detailEs: 'Precipitación pluvial registrada actualmente en Celendín',
+      detailEn: 'Rainfall currently recorded in Celendín',
+      icon: 'rainy',
+      iconColor: '#38BDF8',
+    };
+  }
+
+  // 3. Está por llover (alta probabilidad de lluvia próxima o nubosidad densa pre-lluvia)
+  if (
+    nextHourRainProb >= 60 ||
+    (nextHourCode >= 51 && nextHourCode <= 86) ||
+    (cloudCover >= 88 && nextHourRainProb >= 40)
+  ) {
+    return {
+      desc: 'Por llover',
+      detailEs: `Cielo cargado con ${nextHourRainProb}% de probabilidad de lluvia próxima`,
+      detailEn: `Heavy clouds with ${nextHourRainProb}% chance of upcoming rain`,
+      icon: 'umbrella',
+      iconColor: '#60A5FA',
+    };
+  }
+
+  // 4. Nublado (cielo parcial o totalmente nublado sobre Celendín: códigos WMO 1, 2, 3, 45, 48 o nubosidad >= 25%)
+  if (
+    code === 1 ||
+    code === 2 ||
+    code === 3 ||
+    code === 45 ||
+    code === 48 ||
+    cloudCover >= 25
+  ) {
+    return {
+      desc: 'Nublado',
+      detailEs: `Cielo nublado sobre la provincia de Celendín (${cloudCover}% nubosidad)`,
+      detailEn: `Cloudy sky over Celendín province (${cloudCover}% cloud cover)`,
+      icon: 'cloud',
+      iconColor: '#E2E8F0',
+    };
+  }
+
+  // 5. Soleado / Despejado
+  if (isDay === 0) {
+    return {
+      desc: 'Soleado',
+      detailEs: 'Cielo despejado en la provincia de Celendín',
+      detailEn: 'Clear sky in Celendín province',
+      icon: 'sunny',
+      iconColor: '#FBBF24',
+    };
+  }
+
+  return {
+    desc: 'Soleado',
+    detailEs: 'Cielo despejado y soleado en la provincia de Celendín',
+    detailEn: 'Clear and sunny sky in Celendín province',
+    icon: 'sunny',
+    iconColor: '#FBBF24',
+  };
 }
 
 export default function HomeScreen({ navigation }) {
@@ -68,10 +149,21 @@ export default function HomeScreen({ navigation }) {
   const [activeSavedIndex, setActiveSavedIndex] = useState(0);
   const [infoModal, setInfoModal] = useState(null); // 'safety' | 'weather' | null
   const [liveWeather, setLiveWeather] = useState({
-    temp: 19,
-    desc: 'Soleado',
-    icon: 'sunny-outline',
-    windspeed: 10,
+    temp: 14,
+    tempMax: 18,
+    tempMin: 7,
+    feelsLike: 14,
+    humidity: 74,
+    cloudCover: 65,
+    precipitation: 0,
+    rainProb: 20,
+    desc: 'Nublado',
+    detailEs: 'Cielo nublado sobre la provincia de Celendín (2,625 m s.n.m.)',
+    detailEn: 'Cloudy sky over Celendín province (2,625 m a.s.l.)',
+    icon: 'cloud',
+    iconColor: '#E2E8F0',
+    windspeed: 11,
+    updatedAt: 'En vivo',
   });
 
   const secretTapRef = useRef({ count: 0, lastTap: 0 });
@@ -90,28 +182,119 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  useEffect(() => {
-    let active = true;
-    fetch(
-      'https://api.open-meteo.com/v1/forecast?latitude=-6.8659&longitude=-78.1449&current_weather=true&timezone=America%2FLima'
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        if (active && data?.current_weather) {
-          const cw = data.current_weather;
-          const mapped = describeWeatherCode(Number(cw.weathercode));
-          setLiveWeather({
-            temp: Math.round(Number(cw.temperature)),
-            desc: mapped.desc,
-            icon: mapped.icon,
-            windspeed: Math.round(Number(cw.windspeed) || 0),
+  const fetchCelendinWeather = async () => {
+    try {
+      const res = await fetch(CELENDIN_WEATHER_URL);
+      const data = await res.json();
+      const cur = data?.current;
+      if (!cur) throw new Error('Sin datos ECMWF');
+
+      const currentHourIso = String(cur.time || '').slice(0, 13);
+      const hourlyTimes = data?.hourly?.time || [];
+      const hourlyProbs = data?.hourly?.precipitation_probability || [];
+      const hourlyCodes = data?.hourly?.weather_code || [];
+      let hIdx = hourlyTimes.findIndex((t) =>
+        String(t).startsWith(currentHourIso)
+      );
+      if (hIdx < 0) hIdx = new Date().getHours();
+
+      const nextHourRainProb = Math.max(
+        Number(hourlyProbs[hIdx] || 0),
+        Number(hourlyProbs[hIdx + 1] || 0)
+      );
+      const nextHourCode = Number(hourlyCodes[hIdx + 1] ?? cur.weather_code ?? 0);
+
+      const classified = classifyCelendinWeather({
+        code: Number(cur.weather_code ?? 2),
+        isDay: Number(cur.is_day ?? 1),
+        precipitation:
+          Number(cur.precipitation || 0) +
+          Number(cur.rain || 0) +
+          Number(cur.showers || 0),
+        cloudCover: Number(cur.cloud_cover ?? 60),
+        nextHourRainProb,
+        nextHourCode,
+      });
+
+      const maxArr = data?.daily?.temperature_2m_max;
+      const minArr = data?.daily?.temperature_2m_min;
+      const tempMax =
+        Array.isArray(maxArr) && maxArr.length > 0
+          ? Math.round(Number(maxArr[0]))
+          : 18;
+      const tempMin =
+        Array.isArray(minArr) && minArr.length > 0
+          ? Math.round(Number(minArr[0]))
+          : 7;
+
+      const nowTime = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      setLiveWeather({
+        temp: Math.round(Number(cur.temperature_2m)),
+        tempMax,
+        tempMin,
+        feelsLike: Math.round(
+          Number(cur.apparent_temperature ?? cur.temperature_2m)
+        ),
+        humidity: Math.round(Number(cur.relative_humidity_2m ?? 74)),
+        cloudCover: Math.round(Number(cur.cloud_cover ?? 60)),
+        precipitation: Number(cur.precipitation || 0),
+        rainProb: Math.round(nextHourRainProb),
+        desc: classified.desc,
+        detailEs: classified.detailEs,
+        detailEn: classified.detailEn,
+        icon: classified.icon,
+        iconColor: classified.iconColor,
+        windspeed: Math.round(Number(cur.wind_speed_10m) || 0),
+        updatedAt: nowTime,
+      });
+    } catch {
+      // Respaldo con estación directa de Celendín, Perú (wttr.in)
+      try {
+        const resBackup = await fetch(CELENDIN_WTTR_BACKUP_URL);
+        const wData = await resBackup.json();
+        const cc = wData?.current_condition?.[0];
+        const today = wData?.weather?.[0];
+        if (cc) {
+          const cloud = Number(cc.cloudcover || 60);
+          const precip = Number(cc.precipMM || 0);
+          const classified = classifyCelendinWeather({
+            code: precip > 0.1 ? 61 : cloud >= 25 ? 2 : 0,
+            isDay: 1,
+            precipitation: precip,
+            cloudCover: cloud,
+            nextHourRainProb: precip > 0 ? 75 : 20,
+            nextHourCode: 2,
           });
+          setLiveWeather((prev) => ({
+            ...prev,
+            temp: Math.round(Number(cc.temp_C ?? 14)),
+            tempMax: Math.round(Number(today?.maxtempC ?? 18)),
+            tempMin: Math.round(Number(today?.mintempC ?? 7)),
+            feelsLike: Math.round(Number(cc.FeelsLikeC ?? cc.temp_C ?? 14)),
+            humidity: Math.round(Number(cc.humidity ?? 74)),
+            cloudCover: cloud,
+            desc: classified.desc,
+            detailEs: classified.detailEs,
+            detailEn: classified.detailEn,
+            icon: classified.icon,
+            iconColor: classified.iconColor,
+            windspeed: Math.round(Number(cc.windspeedKmph ?? 11)),
+          }));
         }
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
+      } catch {
+        // Conserva lectura actual de Celendín
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchCelendinWeather();
+    const timer = setInterval(fetchCelendinWeather, 180000); // Actualiza cada 3 minutos en tiempo real
+    return () => clearInterval(timer);
   }, []);
 
   const topInset = Math.max(
@@ -153,7 +336,12 @@ export default function HomeScreen({ navigation }) {
   );
 
   const featuredPlaces = useMemo(
-    () => localizedPlaces.filter((item) => matchesFilter(item)),
+    () =>
+      localizedPlaces.filter(
+        (item) =>
+          matchesFilter(item) &&
+          (selectedCategory === 'Guardados' || item.esExperienciaHoy === true)
+      ),
     [localizedPlaces, selectedCategory, normalizedQuery, savedPlaces]
   );
 
@@ -241,12 +429,19 @@ export default function HomeScreen({ navigation }) {
               <TouchableOpacity
                 style={styles.weatherPill}
                 activeOpacity={0.85}
-                onPress={() => setInfoModal('weather')}
+                onPress={() => {
+                  fetchCelendinWeather();
+                  setInfoModal('weather');
+                }}
               >
-                <Ionicons name={liveWeather.icon} size={17} color="#FBBF24" />
+                <Ionicons
+                  name={liveWeather.icon}
+                  size={17}
+                  color={liveWeather.iconColor || '#FBBF24'}
+                />
                 <View style={styles.weatherTextWrap}>
                   <Text style={styles.weatherTemp}>{liveWeather.temp}°C</Text>
-                  <Text style={styles.weatherDesc}>
+                  <Text style={styles.weatherDesc} numberOfLines={1}>
                     {tr(liveWeather.desc, language)}
                   </Text>
                 </View>
@@ -658,11 +853,171 @@ export default function HomeScreen({ navigation }) {
             </View>
 
             {infoModal === 'weather' && (
-              <Text style={[styles.modalBody, { color: C.textSecondary }]}>
-                {liveWeather.temp} °C • {tr(liveWeather.desc, language)} •{' '}
-                {isEn ? 'Wind' : 'Viento'} {liveWeather.windspeed} km/h.{'\n'}
-                {isEn ? 'Altitude: 2,625 m a.s.l.' : 'Altitud: 2,625 m s.n.m.'}
-              </Text>
+              <View style={styles.weatherModalContent}>
+                <View
+                  style={[
+                    styles.weatherHeroBox,
+                    { backgroundColor: C.cardAlt, borderColor: C.border },
+                  ]}
+                >
+                  <View style={styles.weatherHeroLeft}>
+                    <Ionicons
+                      name={liveWeather.icon}
+                      size={36}
+                      color={liveWeather.iconColor || '#F59E0B'}
+                    />
+                    <View>
+                      <Text style={[styles.weatherHeroTemp, { color: C.text }]}>
+                        {liveWeather.temp}°C
+                      </Text>
+                      <Text
+                        style={[
+                          styles.weatherHeroCondition,
+                          { color: C.primaryLight },
+                        ]}
+                      >
+                        {tr(liveWeather.desc, language)} · {liveWeather.tempMax}°/{liveWeather.tempMin}°
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.weatherLiveBadge}>
+                    <View style={styles.weatherLiveDot} />
+                    <Text style={styles.weatherLiveText}>
+                      {isEn ? 'LIVE' : 'EN VIVO'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text
+                  style={[styles.weatherDetailSub, { color: C.textSecondary }]}
+                >
+                  {isEn ? liveWeather.detailEn : liveWeather.detailEs}
+                </Text>
+
+                <View style={styles.weatherGrid}>
+                  <View
+                    style={[
+                      styles.weatherMetricItem,
+                      { backgroundColor: C.cardAlt, borderColor: C.border },
+                    ]}
+                  >
+                    <Ionicons
+                      name="thermometer-outline"
+                      size={16}
+                      color={C.primaryLight}
+                    />
+                    <Text
+                      style={[
+                        styles.weatherMetricVal,
+                        { color: C.text },
+                      ]}
+                    >
+                      {liveWeather.feelsLike}°C
+                    </Text>
+                    <Text
+                      style={[
+                        styles.weatherMetricLbl,
+                        { color: C.textSecondary },
+                      ]}
+                    >
+                      {isEn ? 'Feels like' : 'Sensación'}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.weatherMetricItem,
+                      { backgroundColor: C.cardAlt, borderColor: C.border },
+                    ]}
+                  >
+                    <Ionicons
+                      name="rainy-outline"
+                      size={16}
+                      color="#38BDF8"
+                    />
+                    <Text
+                      style={[
+                        styles.weatherMetricVal,
+                        { color: C.text },
+                      ]}
+                    >
+                      {liveWeather.rainProb}%
+                    </Text>
+                    <Text
+                      style={[
+                        styles.weatherMetricLbl,
+                        { color: C.textSecondary },
+                      ]}
+                    >
+                      {isEn ? 'Rain prob.' : 'Prob. lluvia'}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.weatherMetricItem,
+                      { backgroundColor: C.cardAlt, borderColor: C.border },
+                    ]}
+                  >
+                    <Ionicons
+                      name="water-outline"
+                      size={16}
+                      color="#0284C7"
+                    />
+                    <Text
+                      style={[
+                        styles.weatherMetricVal,
+                        { color: C.text },
+                      ]}
+                    >
+                      {liveWeather.humidity}%
+                    </Text>
+                    <Text
+                      style={[
+                        styles.weatherMetricLbl,
+                        { color: C.textSecondary },
+                      ]}
+                    >
+                      {isEn ? 'Humidity' : 'Humedad'}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.weatherMetricItem,
+                      { backgroundColor: C.cardAlt, borderColor: C.border },
+                    ]}
+                  >
+                    <Ionicons
+                      name="speedometer-outline"
+                      size={16}
+                      color="#D97706"
+                    />
+                    <Text
+                      style={[
+                        styles.weatherMetricVal,
+                        { color: C.text },
+                      ]}
+                    >
+                      {liveWeather.windspeed} km/h
+                    </Text>
+                    <Text
+                      style={[
+                        styles.weatherMetricLbl,
+                        { color: C.textSecondary },
+                      ]}
+                    >
+                      {isEn ? 'Wind' : 'Viento'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.weatherCoordsFoot, { color: C.textMuted }]}>
+                  {isEn
+                    ? `Celendín Province, Cajamarca (-6.8659, -78.1449) · 2,625 m a.s.l. · Updated: ${liveWeather.updatedAt}`
+                    : `Provincia de Celendín, Cajamarca (-6.8659, -78.1449) · 2,625 m s.n.m. · Actualizado: ${liveWeather.updatedAt}`}
+                </Text>
+              </View>
             )}
             {infoModal === 'safety' && (
               <Text style={[styles.modalBody, { color: C.textSecondary }]}>
@@ -1118,6 +1473,84 @@ const styles = StyleSheet.create({
   modalBody: {
     fontSize: 13.5,
     lineHeight: 20,
+  },
+  weatherModalContent: {
+    gap: 10,
+  },
+  weatherHeroBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  weatherHeroLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  weatherHeroTemp: {
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 26,
+  },
+  weatherHeroCondition: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  weatherLiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.14)',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    gap: 5,
+  },
+  weatherLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+  },
+  weatherLiveText: {
+    color: '#059669',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  weatherDetailSub: {
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  weatherGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  weatherMetricItem: {
+    width: '48%',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    gap: 2,
+  },
+  weatherMetricVal: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  weatherMetricLbl: {
+    fontSize: 11,
+  },
+  weatherCoordsFoot: {
+    fontSize: 11,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginTop: 2,
   },
   modalCloseBtn: {
     marginTop: 14,

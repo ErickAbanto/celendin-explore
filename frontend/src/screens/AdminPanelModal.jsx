@@ -45,6 +45,7 @@ const PERFIL_SECTIONS = [
 const EMPTY_PLACE_FORM = {
   nombre: '',
   categoria: 'Naturaleza',
+  esExperienciaHoy: false,
   ubicacion: '',
   direccionCorta: '',
   distanciaCorta: 'Centro',
@@ -286,6 +287,7 @@ export default function AdminPanelModal() {
       setPlaceForm({
         nombre: item.nombre || '',
         categoria: item.categoria || 'Naturaleza',
+        esExperienciaHoy: item.esExperienciaHoy === true,
         ubicacion: item.ubicacion || item.direccionCorta || '',
         direccionCorta: item.direccionCorta || item.ubicacion || '',
         distanciaCorta: item.distanciaCorta || 'Centro',
@@ -1479,6 +1481,87 @@ export default function AdminPanelModal() {
                   </View>
 
                   <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    ¿Mostrar en Destacados de Celendín (Inicio)?
+                  </Text>
+                  <View style={styles.chipsRow}>
+                    <Pressable
+                      style={[
+                        styles.catChip,
+                        styles.featuredOptionChip,
+                        placeForm.esExperienciaHoy
+                          ? styles.catChipActive
+                          : {
+                              backgroundColor: C.card,
+                              borderColor: C.border,
+                            },
+                      ]}
+                      onPress={() =>
+                        setPlaceForm((p) => ({ ...p, esExperienciaHoy: true }))
+                      }
+                    >
+                      <Ionicons
+                        name={
+                          placeForm.esExperienciaHoy
+                            ? 'star'
+                            : 'star-outline'
+                        }
+                        size={14}
+                        color={placeForm.esExperienciaHoy ? '#FBBF24' : C.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.catChipText,
+                          {
+                            color: placeForm.esExperienciaHoy
+                              ? '#FFFFFF'
+                              : C.text,
+                          },
+                        ]}
+                      >
+                        Marcar como Destacado
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[
+                        styles.catChip,
+                        styles.featuredOptionChip,
+                        !placeForm.esExperienciaHoy
+                          ? styles.catChipActive
+                          : {
+                              backgroundColor: C.card,
+                              borderColor: C.border,
+                            },
+                      ]}
+                      onPress={() =>
+                        setPlaceForm((p) => ({ ...p, esExperienciaHoy: false }))
+                      }
+                    >
+                      <Ionicons
+                        name={
+                          !placeForm.esExperienciaHoy
+                            ? 'close-circle'
+                            : 'close-circle-outline'
+                        }
+                        size={14}
+                        color={!placeForm.esExperienciaHoy ? '#FFFFFF' : C.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.catChipText,
+                          {
+                            color: !placeForm.esExperienciaHoy
+                              ? '#FFFFFF'
+                              : C.text,
+                          },
+                        ]}
+                      >
+                        No Destacado
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                     Ubicación completa (para ficha de detalle) *
                   </Text>
                   <TextInput
@@ -2661,6 +2744,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 13,
     paddingVertical: 6,
+  },
+  featuredOptionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
   },
   catChipActive: {
     backgroundColor: '#0F5C41',

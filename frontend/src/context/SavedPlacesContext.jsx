@@ -351,14 +351,17 @@ export function SavedPlacesProvider({ children }) {
       mapEmbedUrl,
       mapsQuery,
       defaultSaved: false,
-      esExperienciaHoy: true,
+      esExperienciaHoy: Boolean(input?.esExperienciaHoy),
     };
 
     try {
       const created = await createPlace(newPlace);
-      const saved = normalizePlace({ ...newPlace, ...(created || {}) });
+      const saved = normalizePlace({
+        ...newPlace,
+        ...(created || {}),
+        esExperienciaHoy: Boolean(input?.esExperienciaHoy),
+      });
       setPlaces((prev) => [saved, ...prev.filter((p) => p.id !== saved.id)]);
-      syncPlaces();
       return { ok: true, place: saved };
     } catch (e) {
       return dbError(e);
@@ -426,6 +429,7 @@ export function SavedPlacesProvider({ children }) {
         dificultad,
       },
       mapsQuery,
+      esExperienciaHoy: Boolean(input?.esExperienciaHoy),
     };
 
     try {
@@ -433,11 +437,15 @@ export function SavedPlacesProvider({ children }) {
       setPlaces((prev) =>
         prev.map((item) =>
           item.id === placeId
-            ? normalizePlace({ ...item, ...patch, ...(updated || {}) })
+            ? normalizePlace({
+                ...item,
+                ...patch,
+                ...(updated || {}),
+                esExperienciaHoy: Boolean(input?.esExperienciaHoy),
+              })
             : item
         )
       );
-      syncPlaces();
       return { ok: true };
     } catch (e) {
       return dbError(e);

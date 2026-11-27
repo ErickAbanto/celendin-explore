@@ -163,6 +163,8 @@ export function mergeWithCatalog(remotePlaces, currentPlaces = []) {
         imagen: cleanImagen,
         imagenUrl: cleanImagen ? r.imagenUrl : '',
         mapEmbedUrl: r.mapEmbedUrl || '',
+        esExperienciaHoy:
+          r.esExperienciaHoy === true || r.esExperienciaHoy === 'true',
         rating: r.rating ?? '0.0',
         ratingSum: typeof r.ratingSum === 'number' ? r.ratingSum : 0,
         resenasCount: typeof r.resenasCount === 'number' ? r.resenasCount : 0,
