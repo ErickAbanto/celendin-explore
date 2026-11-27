@@ -449,6 +449,7 @@ export default function HomeScreen({ navigation }) {
         ...d,
         id: `search-dir-${d.id}`,
         _rawId: d.id,
+        _rawCategoria: d.categoriaRaw || d.categoria,
         _searchKind: 'directory',
         categoria: d.badge || d.categoria || 'Directorio',
         distanciaCorta: d.direccion || 'Celendín',
@@ -462,6 +463,7 @@ export default function HomeScreen({ navigation }) {
         ...b,
         id: `search-bus-${b.id}`,
         _rawId: b.id,
+        _rawTipo: b.tipo || 'buses',
         _searchKind: 'transport',
         nombre: b.empresa,
         categoria:
@@ -848,13 +850,33 @@ export default function HomeScreen({ navigation }) {
                       if (item._searchKind === 'directory') {
                         navigation.navigate('Directorio', {
                           returnTo: 'Inicio',
+                          targetDirectoryId: item._rawId,
+                          targetCategory: item._rawCategoria,
+                          targetNonce: Date.now(),
                         });
                       } else if (item._searchKind === 'transport') {
                         navigation.navigate('Perfil / Offline', {
                           returnTo: 'Inicio',
+                          targetSection: 'transport',
+                          targetTransportType: item._rawTipo || item.tipo || 'buses',
+                          targetTransportId: item._rawId,
+                          targetNonce: Date.now(),
                         });
                       } else if (item._searchKind === 'emergency') {
-                        setInfoModal('safety');
+                        navigation.navigate('Perfil / Offline', {
+                          returnTo: 'Inicio',
+                          targetSection: 'sos',
+                          targetEmergencyId: item._rawId,
+                          targetNonce: Date.now(),
+                        });
+                      } else if (isSearching) {
+                        navigation.navigate('Lugares', {
+                          returnTo: 'Inicio',
+                          targetPlaceId: item.id,
+                          targetPlaceName: item.nombre,
+                          targetCategory: item.categoriaRaw || item.categoria,
+                          targetNonce: Date.now(),
+                        });
                       } else {
                         const targetPlace =
                           places.find((p) => p.id === item.id) || item;

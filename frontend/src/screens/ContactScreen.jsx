@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   BackHandler,
@@ -57,6 +57,13 @@ export default function ContactScreen({ route, navigation }) {
   const [sosModalVisible, setSosModalVisible] = useState(false);
   const [transportModalType, setTransportModalType] = useState(null); // 'buses' | 'combis' | 'autos' | null
   const [lugarDetallePerfil, setLugarDetallePerfil] = useState(null);
+  const [pendingSosId, setPendingSosId] = useState(null);
+  const [pendingTransportId, setPendingTransportId] = useState(null);
+  const [highlightedId, setHighlightedId] = useState(null);
+  const sosScrollRef = useRef(null);
+  const sosYMapRef = useRef({});
+  const transportScrollRef = useRef(null);
+  const transportYMapRef = useRef({});
   const returnToTab = route?.params?.returnTo;
 
   const handleReturnOrigin = () => {
@@ -70,21 +77,82 @@ export default function ContactScreen({ route, navigation }) {
   };
 
   useEffect(() => {
-    if (!returnToTab || lugarDetallePerfil) return undefined;
+    if (
+      !returnToTab ||
+      lugarDetallePerfil ||
+      sosModalVisible ||
+      transportModalType !== null
+    ) {
+      return undefined;
+    }
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       return handleReturnOrigin();
     });
     return () => sub.remove();
-  }, [returnToTab, lugarDetallePerfil]);
+  }, [returnToTab, lugarDetallePerfil, sosModalVisible, transportModalType]);
+
+  useEffect(() => {
+    const section = route?.params?.targetSection;
+    if (!section) return;
+
+    setLugarDetallePerfil(null);
+    if (section === 'transport') {
+      const nextType = route?.params?.targetTransportType || 'buses';
+      const targetId = route?.params?.targetTransportId || null;
+      setSosModalVisible(false);
+      transportYMapRef.current = {};
+      setTransportModalType(nextType);
+      setPendingTransportId(targetId);
+      setHighlightedId(targetId);
+    } else if (section === 'sos') {
+      const targetId = route?.params?.targetEmergencyId || null;
+      setTransportModalType(null);
+      sosYMapRef.current = {};
+      setSosModalVisible(true);
+      setPendingSosId(targetId);
+      setHighlightedId(targetId);
+    }
+
+    navigation?.setParams?.({
+      targetSection: undefined,
+      targetTransportType: undefined,
+      targetTransportId: undefined,
+      targetEmergencyId: undefined,
+      targetNonce: undefined,
+    });
+  }, [
+    route?.params?.targetSection,
+    route?.params?.targetTransportType,
+    route?.params?.targetTransportId,
+    route?.params?.targetEmergencyId,
+    route?.params?.targetNonce,
+    navigation,
+  ]);
+
+  useEffect(() => {
+    if (!highlightedId) return undefined;
+    const timer = setTimeout(() => setHighlightedId(null), 2800);
+    return () => clearTimeout(timer);
+  }, [highlightedId]);
 
   useEffect(() => {
     if (!navigation?.addListener) return undefined;
     const unsubTabPress = navigation.addListener('tabPress', () => {
       setLugarDetallePerfil(null);
+      setSosModalVisible(false);
+      setTransportModalType(null);
+      setPendingSosId(null);
+      setPendingTransportId(null);
+      setHighlightedId(null);
       navigation?.setParams?.({ returnTo: undefined });
     });
     const unsubBlur = navigation.addListener('blur', () => {
       setLugarDetallePerfil(null);
+      setSosModalVisible(false);
+      setTransportModalType(null);
+      setPendingSosId(null);
+      setPendingTransportId(null);
+      setHighlightedId(null);
       navigation?.setParams?.({ returnTo: undefined });
     });
     return () => {
@@ -141,6 +209,21 @@ export default function ContactScreen({ route, navigation }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {!!returnToTab && (
+          <Pressable
+            style={[
+              styles.backOriginPill,
+              { backgroundColor: C.card, borderColor: C.border },
+            ]}
+            onPress={handleReturnOrigin}
+          >
+            <Ionicons name="arrow-back" size={16} color={C.primaryLight} />
+            <Text style={[styles.backOriginText, { color: C.text }]}>
+              {isEn ? 'Back to Search' : 'Volver a Inicio'}
+            </Text>
+          </Pressable>
+        )}
+
         {/* 1. Tarjeta de Perfil Limpia (sin subtítulo de contador) */}
         <View style={styles.profileCard}>
           <View style={styles.avatarBox}>
@@ -499,33 +582,60 @@ export default function ContactScreen({ route, navigation }) {
               </Pressable>
             </View>
 
-            {emergencyNumbers.map((item) => (
-              <View
-                key={item.id}
-                style={[
-                  styles.modalItem,
-                  { backgroundColor: C.cardAlt, borderColor: C.border },
-                ]}
-              >
-                <View style={styles.modalItemText}>
-                  <Text style={[styles.modalItemTitle, { color: C.text }]}>
-                    {item.titulo}
-                  </Text>
-                  <Text
-                    style={[styles.modalItemSub, { color: C.textSecondary }]}
+            <ScrollView
+              ref={sosScrollRef}
+              style={styles.modalListScroll}
+              contentContainerStyle={styles.modalListContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {emergencyNumbers.map((item) => {
+                const isHighlighted = highlightedId === item.id;
+                return (
+                  <View
+                    key={item.id}
+                    onLayout={(event) => {
+                      const { y } = event.nativeEvent.layout;
+                      sosYMapRef.current[item.id] = y;
+                      if (pendingSosId === item.id) {
+                        setTimeout(() => {
+                          sosScrollRef.current?.scrollTo({
+                            y: Math.max(0, y - 8),
+                            animated: true,
+                          });
+                          setPendingSosId(null);
+                        }, 80);
+                      }
+                    }}
+                    style={[
+                      styles.modalItem,
+                      {
+                        backgroundColor: C.cardAlt,
+                        borderColor: isHighlighted ? C.primaryLight : C.border,
+                        borderWidth: isHighlighted ? 2 : 1,
+                      },
+                    ]}
                   >
-                    {item.detalle}
-                  </Text>
-                </View>
-                <Pressable
-                  style={styles.modalCallBtn}
-                  onPress={() => callEmergency(item.tel)}
-                >
-                  <Ionicons name="call" size={14} color="#FFFFFF" />
-                  <Text style={styles.modalCallText}>{item.numero}</Text>
-                </Pressable>
-              </View>
-            ))}
+                    <View style={styles.modalItemText}>
+                      <Text style={[styles.modalItemTitle, { color: C.text }]}>
+                        {item.titulo}
+                      </Text>
+                      <Text
+                        style={[styles.modalItemSub, { color: C.textSecondary }]}
+                      >
+                        {item.detalle}
+                      </Text>
+                    </View>
+                    <Pressable
+                      style={styles.modalCallBtn}
+                      onPress={() => callEmergency(item.tel)}
+                    >
+                      <Ionicons name="call" size={14} color="#FFFFFF" />
+                      <Text style={styles.modalCallText}>{item.numero}</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -582,27 +692,55 @@ export default function ContactScreen({ route, navigation }) {
               </Pressable>
             </View>
 
-            {busAgencies
-              .filter((bus) => (bus.tipo || 'buses') === transportModalType)
-              .map((bus) => (
-                <View
-                  key={bus.id || bus.empresa}
-                  style={[
-                    styles.busModalItem,
-                    { backgroundColor: C.cardAlt, borderColor: C.border },
-                  ]}
-                >
-                  <Text style={[styles.modalItemTitle, { color: C.text }]}>
-                    {bus.empresa}
-                  </Text>
-                  <Text style={[styles.busRouteText, { color: C.primaryLight }]}>
-                    {bus.ruta}
-                  </Text>
-                  <Text style={[styles.busTerminalAddr, { color: C.textMuted }]}>
-                    {bus.terminal}
-                  </Text>
-                </View>
-              ))}
+            <ScrollView
+              ref={transportScrollRef}
+              style={styles.modalListScroll}
+              contentContainerStyle={styles.modalListContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {busAgencies
+                .filter((bus) => (bus.tipo || 'buses') === transportModalType)
+                .map((bus) => {
+                  const busKey = bus.id || bus.empresa;
+                  const isHighlighted = highlightedId === busKey;
+                  return (
+                    <View
+                      key={busKey}
+                      onLayout={(event) => {
+                        const { y } = event.nativeEvent.layout;
+                        transportYMapRef.current[busKey] = y;
+                        if (pendingTransportId === busKey) {
+                          setTimeout(() => {
+                            transportScrollRef.current?.scrollTo({
+                              y: Math.max(0, y - 8),
+                              animated: true,
+                            });
+                            setPendingTransportId(null);
+                          }, 80);
+                        }
+                      }}
+                      style={[
+                        styles.busModalItem,
+                        {
+                          backgroundColor: C.cardAlt,
+                          borderColor: isHighlighted ? C.primaryLight : C.border,
+                          borderWidth: isHighlighted ? 2 : 1,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.modalItemTitle, { color: C.text }]}>
+                        {bus.empresa}
+                      </Text>
+                      <Text style={[styles.busRouteText, { color: C.primaryLight }]}>
+                        {bus.ruta}
+                      </Text>
+                      <Text style={[styles.busTerminalAddr, { color: C.textMuted }]}>
+                        {bus.terminal}
+                      </Text>
+                    </View>
+                  );
+                })}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -625,6 +763,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 28,
+  },
+  backOriginPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginBottom: 12,
+  },
+  backOriginText: {
+    fontSize: 12.5,
+    fontWeight: '700',
   },
   profileCard: {
     backgroundColor: '#0E4B37',
@@ -861,6 +1014,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     padding: 18,
+    gap: 10,
+    maxHeight: '80%',
+  },
+  modalListScroll: {
+    maxHeight: 380,
+  },
+  modalListContent: {
     gap: 10,
   },
   modalHeader: {

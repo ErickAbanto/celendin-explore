@@ -176,10 +176,12 @@ export function localizePlace(item, language) {
 }
 
 export function localizeDirectoryItem(item, language) {
-  if (!item || language !== 'en') return item;
+  if (!item) return item;
+  const base = { ...item, categoriaRaw: item.categoriaRaw || item.categoria };
+  if (language !== 'en') return base;
   const en = DIRECTORY_EN[item.id] || {};
   return {
-    ...item,
+    ...base,
     ...en,
     categoria: tr(item.categoria, language),
     badge: tr(item.badge, language),

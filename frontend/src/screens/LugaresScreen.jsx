@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -59,7 +60,30 @@ export default function LugaresScreen({ route, navigation }) {
 
   const [lugarDetalle, setLugarDetalle] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('Todos');
+  const [pendingTargetId, setPendingTargetId] = useState(null);
+  const [highlightedId, setHighlightedId] = useState(null);
   const secretTapRef = useRef({ count: 0, lastTap: 0 });
+  const listScrollRef = useRef(null);
+  const itemYMapRef = useRef({});
+  const returnToTab = route?.params?.returnTo;
+
+  const handleReturnOrigin = () => {
+    const origin = route?.params?.returnTo;
+    navigation?.setParams?.({ returnTo: undefined });
+    if (origin) {
+      navigation?.navigate?.(origin);
+      return true;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    if (!returnToTab || lugarDetalle) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      return handleReturnOrigin();
+    });
+    return () => sub.remove();
+  }, [returnToTab, lugarDetalle]);
 
   const handleSecretHeaderTap = () => {
     const now = Date.now();
@@ -90,13 +114,63 @@ export default function LugaresScreen({ route, navigation }) {
   }, [route?.params?.lugarElegido, places, navigation]);
 
   useEffect(() => {
+    const targetId = route?.params?.targetPlaceId;
+    const targetName = route?.params?.targetPlaceName;
+    if (!targetId && !targetName) return;
+
+    const matched = places.find(
+      (p) => (targetId && p.id === targetId) || (targetName && p.nombre === targetName)
+    );
+    const rawCat =
+      route?.params?.targetCategory ||
+      matched?.categoriaFiltro ||
+      matched?.categoria;
+    const nextCat = FILTER_TABS.includes(rawCat) ? rawCat : 'Todos';
+    const resolvedId = matched?.id || targetId;
+
+    setLugarDetalle(null);
+    if (nextCat !== selectedCategory) {
+      itemYMapRef.current = {};
+      setSelectedCategory(nextCat);
+    }
+    setPendingTargetId(resolvedId || null);
+    setHighlightedId(resolvedId || null);
+
+    navigation?.setParams?.({
+      targetPlaceId: undefined,
+      targetPlaceName: undefined,
+      targetCategory: undefined,
+      targetNonce: undefined,
+    });
+  }, [
+    route?.params?.targetPlaceId,
+    route?.params?.targetPlaceName,
+    route?.params?.targetNonce,
+    places,
+    selectedCategory,
+    navigation,
+  ]);
+
+  useEffect(() => {
+    if (!highlightedId) return undefined;
+    const timer = setTimeout(() => setHighlightedId(null), 2800);
+    return () => clearTimeout(timer);
+  }, [highlightedId]);
+
+  useEffect(() => {
     if (!navigation?.addListener) return undefined;
     const unsubTabPress = navigation.addListener('tabPress', () => {
       setLugarDetalle(null);
+      setPendingTargetId(null);
+      setHighlightedId(null);
+      navigation?.setParams?.({ returnTo: undefined });
       syncPlaces();
     });
     const unsubBlur = navigation.addListener('blur', () => {
       setLugarDetalle(null);
+      setPendingTargetId(null);
+      setHighlightedId(null);
+      navigation?.setParams?.({ returnTo: undefined });
     });
     return () => {
       unsubTabPress?.();
@@ -115,6 +189,20 @@ export default function LugaresScreen({ route, navigation }) {
           );
     return base.map((item) => localizePlace(item, language));
   }, [places, selectedCategory, language]);
+
+  useEffect(() => {
+    if (!pendingTargetId) return undefined;
+    const y = itemYMapRef.current[pendingTargetId];
+    if (typeof y !== 'number') return undefined;
+    const timer = setTimeout(() => {
+      listScrollRef.current?.scrollTo({
+        y: Math.max(0, y - 12),
+        animated: true,
+      });
+      setPendingTargetId(null);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [pendingTargetId, filteredPlaces]);
 
   if (lugarDetalle) {
     const currentPlace =
@@ -139,6 +227,18 @@ export default function LugaresScreen({ route, navigation }) {
         ]}
       >
         <View style={styles.headerTitleRow}>
+          {!!returnToTab && (
+            <TouchableOpacity
+              style={[
+                styles.backOriginBtn,
+                { backgroundColor: C.primarySoft },
+              ]}
+              onPress={handleReturnOrigin}
+              hitSlop={8}
+            >
+              <Ionicons name="arrow-back" size={18} color={C.primaryLight} />
+            </TouchableOpacity>
+          )}
           <Text style={[styles.headerTitle, { color: C.text }]}>
             {isEn ? 'Tourist Places' : 'Lugares Turísticos'}
           </Text>
@@ -161,7 +261,14 @@ export default function LugaresScreen({ route, navigation }) {
                     : { backgroundColor: C.card, borderColor: C.border },
                 ]}
                 activeOpacity={0.85}
-                onPress={() => setSelectedCategory(cat)}
+                onPress={() => {
+                  if (cat !== selectedCategory) {
+                    itemYMapRef.current = {};
+                  }
+                  setPendingTargetId(null);
+                  setHighlightedId(null);
+                  setSelectedCategory(cat);
+                }}
               >
                 <Text
                   style={[
@@ -179,6 +286,7 @@ export default function LugaresScreen({ route, navigation }) {
 
       {/* Lista limpia de lugares */}
       <ScrollView
+        ref={listScrollRef}
         style={styles.listScroll}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
@@ -186,13 +294,31 @@ export default function LugaresScreen({ route, navigation }) {
         {filteredPlaces.map((item) => {
           const saved = isSaved(item.id);
           const imgSource = getPlaceImageSource(item);
+          const isHighlighted = highlightedId === item.id;
 
           return (
             <View
               key={item.id}
+              onLayout={(event) => {
+                const { y } = event.nativeEvent.layout;
+                itemYMapRef.current[item.id] = y;
+                if (pendingTargetId === item.id) {
+                  setTimeout(() => {
+                    listScrollRef.current?.scrollTo({
+                      y: Math.max(0, y - 12),
+                      animated: true,
+                    });
+                    setPendingTargetId(null);
+                  }, 80);
+                }
+              }}
               style={[
                 styles.placeCard,
-                { backgroundColor: C.card, borderColor: C.border },
+                {
+                  backgroundColor: C.card,
+                  borderColor: isHighlighted ? C.primaryLight : C.border,
+                  borderWidth: isHighlighted ? 2 : 1,
+                },
               ]}
             >
               {/* Contenedor de imagen aislado arriba (estático) */}
@@ -359,6 +485,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  backOriginBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   titleAccentBar: {
     width: 4,

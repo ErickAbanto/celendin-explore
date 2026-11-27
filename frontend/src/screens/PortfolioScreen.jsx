@@ -48,7 +48,11 @@ export default function PortfolioScreen({ route, navigation }) {
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [ratingTarget, setRatingTarget] = useState(null);
   const [selectedStars, setSelectedStars] = useState(0);
+  const [pendingTargetId, setPendingTargetId] = useState(null);
+  const [highlightedId, setHighlightedId] = useState(null);
   const secretTapRef = useRef({ count: 0, lastTap: 0 });
+  const listScrollRef = useRef(null);
+  const itemYMapRef = useRef({});
   const returnToTab = route?.params?.returnTo;
 
   const handleReturnOrigin = () => {
@@ -72,10 +76,51 @@ export default function PortfolioScreen({ route, navigation }) {
   useEffect(() => {
     if (!navigation?.addListener) return undefined;
     const unsubBlur = navigation.addListener('blur', () => {
+      setPendingTargetId(null);
+      setHighlightedId(null);
       navigation?.setParams?.({ returnTo: undefined });
     });
     return () => unsubBlur?.();
   }, [navigation]);
+
+  useEffect(() => {
+    const targetId = route?.params?.targetDirectoryId;
+    if (!targetId) return;
+
+    const matchedItem = directoryItems.find(
+      (d) => d.id === targetId || d._id === targetId
+    );
+    const rawCat = route?.params?.targetCategory || matchedItem?.categoria;
+    const nextCat = DIRECTORY_CATEGORIES.some((c) => c.key === rawCat)
+      ? rawCat
+      : 'Todos';
+    const resolvedId = matchedItem?.id || targetId;
+
+    if (nextCat !== selectedCategory) {
+      itemYMapRef.current = {};
+      setSelectedCategory(nextCat);
+    }
+    setPendingTargetId(resolvedId);
+    setHighlightedId(resolvedId);
+
+    navigation?.setParams?.({
+      targetDirectoryId: undefined,
+      targetCategory: undefined,
+      targetNonce: undefined,
+    });
+  }, [
+    route?.params?.targetDirectoryId,
+    route?.params?.targetNonce,
+    directoryItems,
+    selectedCategory,
+    navigation,
+  ]);
+
+  useEffect(() => {
+    if (!highlightedId) return undefined;
+    const timer = setTimeout(() => setHighlightedId(null), 2800);
+    return () => clearTimeout(timer);
+  }, [highlightedId]);
 
   const handleSecretHeaderTap = () => {
     const now = Date.now();
@@ -101,6 +146,20 @@ export default function PortfolioScreen({ route, navigation }) {
         : directoryItems.filter((item) => item.categoria === selectedCategory);
     return base.map((item) => localizeDirectoryItem(item, language));
   }, [selectedCategory, directoryItems, language]);
+
+  useEffect(() => {
+    if (!pendingTargetId) return undefined;
+    const y = itemYMapRef.current[pendingTargetId];
+    if (typeof y !== 'number') return undefined;
+    const timer = setTimeout(() => {
+      listScrollRef.current?.scrollTo({
+        y: Math.max(0, y - 12),
+        animated: true,
+      });
+      setPendingTargetId(null);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [pendingTargetId, filteredDirectory]);
 
   const handleCall = async (item) => {
     try {
@@ -175,7 +234,14 @@ export default function PortfolioScreen({ route, navigation }) {
             return (
               <Pressable
                 key={cat.key}
-                onPress={() => setSelectedCategory(cat.key)}
+                onPress={() => {
+                  if (cat.key !== selectedCategory) {
+                    itemYMapRef.current = {};
+                  }
+                  setPendingTargetId(null);
+                  setHighlightedId(null);
+                  setSelectedCategory(cat.key);
+                }}
                 style={[
                   styles.chip,
                   active
@@ -199,18 +265,37 @@ export default function PortfolioScreen({ route, navigation }) {
 
       {/* Tarjetas limpias del directorio */}
       <ScrollView
+        ref={listScrollRef}
         style={styles.listScroll}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       >
         {filteredDirectory.map((item) => {
           const imgSource = getPlaceImageSource(item);
+          const isHighlighted = highlightedId === item.id;
           return (
           <View
             key={item.id}
+            onLayout={(event) => {
+              const { y } = event.nativeEvent.layout;
+              itemYMapRef.current[item.id] = y;
+              if (pendingTargetId === item.id) {
+                setTimeout(() => {
+                  listScrollRef.current?.scrollTo({
+                    y: Math.max(0, y - 12),
+                    animated: true,
+                  });
+                  setPendingTargetId(null);
+                }, 80);
+              }
+            }}
             style={[
               styles.card,
-              { backgroundColor: C.card, borderColor: C.border },
+              {
+                backgroundColor: C.card,
+                borderColor: isHighlighted ? C.primaryLight : C.border,
+                borderWidth: isHighlighted ? 2 : 1,
+              },
             ]}
           >
             {/* Imagen 100% limpia sin etiquetas encima */}
