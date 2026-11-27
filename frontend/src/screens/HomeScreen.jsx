@@ -25,7 +25,14 @@ import {
   openGoogleMapsRoute,
 } from '../constants/placesCatalog';
 import { useSavedPlaces } from '../context/SavedPlacesContext';
-import { localizeEmergency, localizePlace, tr } from '../constants/i18n';
+import {
+  localizeDirectoryItem,
+  localizeEmergency,
+  localizePlace,
+  localizeTransport,
+  tr,
+} from '../constants/i18n';
+import PlaceDetailScreen from './PlaceDetailScreen';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SAVED_CARD_WIDTH = Math.min(SCREEN_WIDTH - 36, 370);
@@ -130,8 +137,10 @@ export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const {
     places,
+    directoryItems,
     savedPlaces,
     emergencyNumbers,
+    busAgencies,
     refreshing,
     syncPlaces,
     toggleSaved,
@@ -148,6 +157,7 @@ export default function HomeScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSavedIndex, setActiveSavedIndex] = useState(0);
   const [infoModal, setInfoModal] = useState(null); // 'safety' | 'weather' | null
+  const [lugarDetalleHome, setLugarDetalleHome] = useState(null);
   const [liveWeather, setLiveWeather] = useState({
     temp: 14,
     tempMax: 18,
@@ -297,12 +307,55 @@ export default function HomeScreen({ navigation }) {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!navigation?.addListener) return undefined;
+    const unsubTabPress = navigation.addListener('tabPress', () => {
+      setLugarDetalleHome(null);
+    });
+    const unsubBlur = navigation.addListener('blur', () => {
+      setLugarDetalleHome(null);
+    });
+    return () => {
+      unsubTabPress?.();
+      unsubBlur?.();
+    };
+  }, [navigation]);
+
   const topInset = Math.max(
     insets.top,
     Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 6 : 16
   );
 
-  const normalizedQuery = searchQuery.trim().toLowerCase();
+  // Respeta tildes (á, é, í, ó, ú), la letra ñ/Ñ y signos; además permite coincidencia flexible
+  const cleanExact = (str) => String(str || '').toLowerCase().trim();
+  // Quita tildes vocales pero CONSERVA intacta la letra ñ
+  const cleanKeepEnye = (str) =>
+    String(str || '')
+      .toLowerCase()
+      .replace(/ñ/g, '__ENYE__')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/__ENYE__/g, 'ñ')
+      .trim();
+
+  const rawQueryLower = cleanExact(searchQuery);
+  const flexQueryLower = cleanKeepEnye(searchQuery);
+  const isSearching = rawQueryLower.length > 0;
+  // Si el usuario escribió explícitamente una tilde o ñ, exige coincidencia exacta con esa tilde/ñ
+  const hasExplicitAccentOrEnye = /[áéíóúüñ]/i.test(searchQuery);
+
+  const valueMatchesQuery = (val) => {
+    if (!isSearching) return true;
+    const text = String(val || '');
+    if (!text) return false;
+    if (hasExplicitAccentOrEnye) {
+      return cleanExact(text).includes(rawQueryLower);
+    }
+    return (
+      cleanExact(text).includes(rawQueryLower) ||
+      cleanKeepEnye(text).includes(flexQueryLower)
+    );
+  };
 
   const localizedPlaces = useMemo(
     () => places.map((p) => localizePlace(p, language)),
@@ -312,38 +365,146 @@ export default function HomeScreen({ navigation }) {
     () => savedPlaces.map((p) => localizePlace(p, language)),
     [savedPlaces, language]
   );
+  const localizedDirectory = useMemo(
+    () => (directoryItems || []).map((d) => localizeDirectoryItem(d, language)),
+    [directoryItems, language]
+  );
+  const localizedTransport = useMemo(
+    () => (busAgencies || []).map((b) => localizeTransport(b, language)),
+    [busAgencies, language]
+  );
+  const localizedEmergencies = useMemo(
+    () => (emergencyNumbers || []).map((e) => localizeEmergency(e, language)),
+    [emergencyNumbers, language]
+  );
 
   const textMatches = (item) => {
-    if (!normalizedQuery) return true;
-    return [item.nombre, item.desc, item.categoria, item.ubicacion].some((v) =>
-      String(v || '').toLowerCase().includes(normalizedQuery)
-    );
+    if (!isSearching) return true;
+    return [
+      item.nombre,
+      item.titulo,
+      item.empresa,
+      item.desc,
+      item.especialidad,
+      item.categoria,
+      item.categoriaRaw,
+      item.badge,
+      item.ubicacion,
+      item.direccionCorta,
+      item.direccion,
+      item.distanciaCorta,
+      item.precioTexto,
+      item.rangoPrecio,
+      item.horario,
+      item.tiempoEstimado,
+      item.altitudTexto,
+      item.ruta,
+      item.terminal,
+      item.detalle,
+      item.numero,
+      item.telefono,
+      item.tips?.llevar,
+      item.tips?.dificultad,
+      item.tips?.mejorHorario,
+    ].some((v) => valueMatchesQuery(v));
   };
 
   const matchesFilter = (item) => {
     if (!textMatches(item)) return false;
+    // Cuando el usuario está escribiendo en el buscador, no ocultamos ningún resultado por chip de categoría
+    if (isSearching) return true;
     if (selectedCategory === 'Todo') return true;
     if (selectedCategory === 'Guardados') return isSaved(item.id);
     return (
       item.categoriaFiltro === selectedCategory ||
-      item.categoriaRaw === selectedCategory
+      item.categoriaRaw === selectedCategory ||
+      item.categoria === selectedCategory
     );
   };
 
   const filteredSavedPlaces = useMemo(
     () => localizedSaved.filter((item) => textMatches(item)),
-    [localizedSaved, normalizedQuery]
+    [localizedSaved, searchQuery]
   );
 
-  const featuredPlaces = useMemo(
-    () =>
-      localizedPlaces.filter(
-        (item) =>
-          matchesFilter(item) &&
-          (selectedCategory === 'Guardados' || item.esExperienciaHoy === true)
-      ),
-    [localizedPlaces, selectedCategory, normalizedQuery, savedPlaces]
-  );
+  // Cuando el buscador está activo, busca en TODA la app:
+  // 1) Todos los Lugares Turísticos (Naturaleza, Cultura, Artesanía, Aventura)
+  // 2) Todo el Directorio (Restaurantes, Gastronomía, Chocolaterías, Artesanía, Hoteles)
+  // 3) Transporte (Buses, Combis, Autos) y Emergencias
+  // Cuando el buscador está vacío, muestra únicamente los Lugares Destacados por el Administrador.
+  const featuredPlaces = useMemo(() => {
+    if (!isSearching) {
+      return localizedPlaces.filter(
+        (item) => matchesFilter(item) && item.esExperienciaHoy === true
+      );
+    }
+
+    const matchedPlaces = localizedPlaces
+      .filter((item) => textMatches(item))
+      .map((item) => ({ ...item, _searchKind: 'place' }));
+
+    const matchedDirectory = localizedDirectory
+      .filter((d) => textMatches(d))
+      .map((d) => ({
+        ...d,
+        id: `search-dir-${d.id}`,
+        _rawId: d.id,
+        _searchKind: 'directory',
+        categoria: d.badge || d.categoria || 'Directorio',
+        distanciaCorta: d.direccion || 'Celendín',
+        precioTexto: d.rangoPrecio || d.telefono || '',
+        desc: d.especialidad || '',
+      }));
+
+    const matchedTransport = localizedTransport
+      .filter((b) => textMatches(b))
+      .map((b) => ({
+        ...b,
+        id: `search-bus-${b.id}`,
+        _rawId: b.id,
+        _searchKind: 'transport',
+        nombre: b.empresa,
+        categoria:
+          b.tipo === 'combis'
+            ? 'Combis'
+            : b.tipo === 'autos'
+            ? 'Autos'
+            : 'Buses',
+        distanciaCorta: b.terminal || 'Celendín',
+        precioTexto: b.ruta || '',
+        rating: '5.0',
+      }));
+
+    const matchedEmergencies = localizedEmergencies
+      .filter((e) => textMatches(e))
+      .map((e) => ({
+        ...e,
+        id: `search-sos-${e.id}`,
+        _rawId: e.id,
+        _searchKind: 'emergency',
+        nombre: e.titulo,
+        categoria: 'Emergencia SOS',
+        distanciaCorta: e.detalle || 'Celendín',
+        precioTexto: e.numero || '',
+        rating: '5.0',
+      }));
+
+    return [
+      ...matchedPlaces,
+      ...matchedDirectory,
+      ...matchedTransport,
+      ...matchedEmergencies,
+    ];
+  }, [
+    localizedPlaces,
+    localizedDirectory,
+    localizedTransport,
+    localizedEmergencies,
+    selectedCategory,
+    searchQuery,
+    isSearching,
+    savedPlaces,
+  ]);
 
   const categories = [
     { key: 'Todo', label: isEn ? 'All' : 'Todo' },
@@ -390,6 +551,17 @@ export default function HomeScreen({ navigation }) {
 
     return () => clearInterval(interval);
   }, [showSavedSection, filteredSavedPlaces]);
+
+  if (lugarDetalleHome) {
+    const currentPlace =
+      places.find((p) => p.id === lugarDetalleHome.id) || lugarDetalleHome;
+    return (
+      <PlaceDetailScreen
+        lugar={currentPlace}
+        onBack={() => setLugarDetalleHome(null)}
+      />
+    );
+  }
 
   return (
     <View style={[styles.screen, { backgroundColor: C.background }]}>
@@ -629,12 +801,18 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
-        {/* Sección: Destacados de Celendín (misma estructura para Todo, Guardados, Naturaleza y Cultura) */}
+        {/* Sección: Destacados de Celendín o Resultados del Buscador */}
         {featuredPlaces.length > 0 ? (
           <View key="destacados-static-only" style={styles.sectionBlock}>
             <View style={styles.sectionHeaderRow}>
               <Text style={[styles.sectionTitleText, { color: C.text }]}>
-                {isEn ? 'Featured in Celendín' : 'Destacados de Celendín'}
+                {isSearching
+                  ? isEn
+                    ? `Search results (${featuredPlaces.length})`
+                    : `Resultados de búsqueda (${featuredPlaces.length})`
+                  : isEn
+                  ? 'Featured in Celendín'
+                  : 'Destacados de Celendín'}
               </Text>
               <TouchableOpacity
                 style={styles.seeAllBtn}
@@ -658,17 +836,33 @@ export default function HomeScreen({ navigation }) {
               contentContainerStyle={styles.featuredCarouselContent}
             >
               {featuredPlaces.map((item) => {
-                const saved = isSaved(item.id);
                 const imgSource = getPlaceImageSource(item);
                 return (
-                  <View
+                  <Pressable
                     key={`static-card-${item.id}`}
                     style={[
                       styles.featuredCard,
                       { backgroundColor: C.card, borderColor: C.border },
                     ]}
+                    onPress={() => {
+                      if (item._searchKind === 'directory') {
+                        navigation.navigate('Directorio', {
+                          returnTo: 'Inicio',
+                        });
+                      } else if (item._searchKind === 'transport') {
+                        navigation.navigate('Perfil / Offline', {
+                          returnTo: 'Inicio',
+                        });
+                      } else if (item._searchKind === 'emergency') {
+                        setInfoModal('safety');
+                      } else {
+                        const targetPlace =
+                          places.find((p) => p.id === item.id) || item;
+                        setLugarDetalleHome(targetPlace);
+                      }
+                    }}
                   >
-                    {/* Contenedor de imagen aislado arriba con overflow hidden */}
+                    {/* Contenedor de imagen aislado arriba con overflow hidden (sin botón de corazón) */}
                     <View
                       style={[
                         styles.featuredImgBox,
@@ -690,18 +884,6 @@ export default function HomeScreen({ navigation }) {
                           />
                         </View>
                       )}
-                      <TouchableOpacity
-                        style={styles.smallHeartBtn}
-                        activeOpacity={0.8}
-                        onPress={() => toggleSaved(item.id)}
-                        hitSlop={8}
-                      >
-                        <Ionicons
-                          name={saved ? 'heart' : 'heart-outline'}
-                          size={15}
-                          color={saved ? '#EC2D5B' : '#FFFFFF'}
-                        />
-                      </TouchableOpacity>
                     </View>
 
                     {/* Contenedor sólido aparte al pie de la imagen */}
@@ -778,7 +960,7 @@ export default function HomeScreen({ navigation }) {
                         </Text>
                       </View>
                     </View>
-                  </View>
+                  </Pressable>
                 );
               })}
             </ScrollView>

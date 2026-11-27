@@ -70,7 +70,6 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
   );
 
   const handleBackToLugares = () => {
-    syncPlaces();
     if (typeof onBack === 'function') {
       onBack();
     }
@@ -118,14 +117,6 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleBackToLugares}
-            tintColor="#0F5C41"
-            colors={['#0F5C41']}
-          />
-        }
       >
         {/* Cabecera de imagen limpia (sin textos ni sombras encima) */}
         <View style={[styles.heroWrap, { height: 195 + topInset }]}>
@@ -150,12 +141,12 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
 
           <View style={[styles.heroTopBar, { paddingTop: topInset + 8 }]}>
             <TouchableOpacity
-              style={styles.circleBtn}
-              activeOpacity={0.8}
+              style={styles.backPillBtn}
+              activeOpacity={0.85}
               hitSlop={12}
               onPress={handleBackToLugares}
             >
-              <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+              <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
             </TouchableOpacity>
 
             <View style={styles.heroTopRight}>
@@ -704,17 +695,35 @@ const styles = StyleSheet.create({
   heroTopBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
   },
   heroTopRight: {
     flexDirection: 'row',
     gap: 8,
   },
+  backPillBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F5C41',
+    borderWidth: 1.8,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 6,
+  },
   circleBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(17, 24, 39, 0.55)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(17, 24, 39, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.45)',
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  BackHandler,
   Image,
   Linking,
   Modal,
@@ -28,11 +29,13 @@ import {
   localizeTransport,
   tr,
 } from '../constants/i18n';
+import PlaceDetailScreen from './PlaceDetailScreen';
 
-export default function ContactScreen() {
+export default function ContactScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const {
+    places,
     savedPlaces: rawSavedPlaces,
     emergencyNumbers: rawEmergencyNumbers,
     busAgencies: rawBusAgencies,
@@ -53,6 +56,42 @@ export default function ContactScreen() {
   const [activeSlide, setActiveSlide] = useState(0);
   const [sosModalVisible, setSosModalVisible] = useState(false);
   const [transportModalType, setTransportModalType] = useState(null); // 'buses' | 'combis' | 'autos' | null
+  const [lugarDetallePerfil, setLugarDetallePerfil] = useState(null);
+  const returnToTab = route?.params?.returnTo;
+
+  const handleReturnOrigin = () => {
+    const origin = route?.params?.returnTo;
+    navigation?.setParams?.({ returnTo: undefined });
+    if (origin) {
+      navigation?.navigate?.(origin);
+      return true;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    if (!returnToTab || lugarDetallePerfil) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      return handleReturnOrigin();
+    });
+    return () => sub.remove();
+  }, [returnToTab, lugarDetallePerfil]);
+
+  useEffect(() => {
+    if (!navigation?.addListener) return undefined;
+    const unsubTabPress = navigation.addListener('tabPress', () => {
+      setLugarDetallePerfil(null);
+      navigation?.setParams?.({ returnTo: undefined });
+    });
+    const unsubBlur = navigation.addListener('blur', () => {
+      setLugarDetallePerfil(null);
+      navigation?.setParams?.({ returnTo: undefined });
+    });
+    return () => {
+      unsubTabPress?.();
+      unsubBlur?.();
+    };
+  }, [navigation]);
 
   const topInset = Math.max(
     insets.top,
@@ -80,6 +119,17 @@ export default function ContactScreen() {
       );
     }
   };
+
+  if (lugarDetallePerfil) {
+    const currentPlace =
+      places.find((p) => p.id === lugarDetallePerfil.id) || lugarDetallePerfil;
+    return (
+      <PlaceDetailScreen
+        lugar={currentPlace}
+        onBack={() => setLugarDetallePerfil(null)}
+      />
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -170,7 +220,7 @@ export default function ContactScreen() {
               {savedPlaces.map((place) => {
                 const imgSource = getPlaceImageSource(place);
                 return (
-                <View
+                <Pressable
                   key={place.id || place.nombre}
                   style={[
                     styles.savedCard,
@@ -180,6 +230,11 @@ export default function ContactScreen() {
                       borderColor: C.border,
                     },
                   ]}
+                  onPress={() => {
+                    const target =
+                      places.find((p) => p.id === place.id) || place;
+                    setLugarDetallePerfil(target);
+                  }}
                 >
                   {imgSource ? (
                     <Image
@@ -254,7 +309,7 @@ export default function ContactScreen() {
                       color="#FFFFFF"
                     />
                   </Pressable>
-                </View>
+                </Pressable>
                 );
               })}
             </ScrollView>

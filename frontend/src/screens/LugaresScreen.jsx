@@ -182,14 +182,6 @@ export default function LugaresScreen({ route, navigation }) {
         style={styles.listScroll}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={syncPlaces}
-            tintColor={COLORS.primary}
-            colors={[COLORS.primary]}
-          />
-        }
       >
         {filteredPlaces.map((item) => {
           const saved = isSaved(item.id);

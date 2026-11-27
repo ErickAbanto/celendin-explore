@@ -1,6 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  BackHandler,
   Image,
   Linking,
   Modal,
@@ -32,7 +33,7 @@ const DIRECTORY_CATEGORIES = [
   { key: 'Hoteles', labelEs: 'Hoteles', labelEn: 'Hotels' },
 ];
 
-export default function PortfolioScreen() {
+export default function PortfolioScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const {
     directoryItems,
@@ -48,6 +49,33 @@ export default function PortfolioScreen() {
   const [ratingTarget, setRatingTarget] = useState(null);
   const [selectedStars, setSelectedStars] = useState(0);
   const secretTapRef = useRef({ count: 0, lastTap: 0 });
+  const returnToTab = route?.params?.returnTo;
+
+  const handleReturnOrigin = () => {
+    const origin = route?.params?.returnTo;
+    navigation?.setParams?.({ returnTo: undefined });
+    if (origin) {
+      navigation?.navigate?.(origin);
+      return true;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    if (!returnToTab) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      return handleReturnOrigin();
+    });
+    return () => sub.remove();
+  }, [returnToTab]);
+
+  useEffect(() => {
+    if (!navigation?.addListener) return undefined;
+    const unsubBlur = navigation.addListener('blur', () => {
+      navigation?.setParams?.({ returnTo: undefined });
+    });
+    return () => unsubBlur?.();
+  }, [navigation]);
 
   const handleSecretHeaderTap = () => {
     const now = Date.now();
@@ -120,6 +148,18 @@ export default function PortfolioScreen() {
         ]}
       >
         <View style={styles.headerTitleRow}>
+          {!!returnToTab && (
+            <Pressable
+              style={[
+                styles.backOriginBtn,
+                { backgroundColor: C.primarySoft },
+              ]}
+              onPress={handleReturnOrigin}
+              hitSlop={8}
+            >
+              <Ionicons name="arrow-back" size={18} color={C.primaryLight} />
+            </Pressable>
+          )}
           <Text style={[styles.headerTitle, { color: C.text }]}>
             {isEn ? 'Directory' : 'Directorio'}
           </Text>
@@ -372,6 +412,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  backOriginBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   titleAccentBar: {
     width: 4,
