@@ -1,5 +1,4 @@
 import { Linking } from 'react-native';
-import placesFromDataJs from './placesData.json';
 import { getImageUrl } from '../services/api';
 
 export const IMAGE_PRESETS = [];
@@ -38,30 +37,25 @@ export function extractIframeSrc(raw) {
   const srcMatch = texto.match(/src=["']([^"']+)["']/i);
   const candidate = srcMatch ? srcMatch[1].trim() : texto;
 
-  // Si pega un iframe embed oficial de Google Maps
   if (/google\.com\/maps\/embed/i.test(candidate) || /output=embed/i.test(candidate)) {
     return candidate;
   }
 
-  // Si pega un enlace de Google Maps con coordenadas @lat,lng
   const atCoords = candidate.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (atCoords) {
     return `https://maps.google.com/maps?q=${atCoords[1]},${atCoords[2]}&z=15&output=embed`;
   }
 
-  // Si pega un enlace de Google Maps con ?q= o query=
   const qMatch = candidate.match(/[?&](?:q|query|destination)=([^&]+)/i);
   if (qMatch) {
     return `https://maps.google.com/maps?q=${qMatch[1]}&z=15&output=embed`;
   }
 
-  // Si pega un enlace de Google Maps /maps/place/Nombre/...
   const placeMatch = candidate.match(/google\.[^/]+\/maps\/place\/([^/?#]+)/i);
   if (placeMatch) {
     return `https://maps.google.com/maps?q=${placeMatch[1]}&z=15&output=embed`;
   }
 
-  // Si es una URL https válida (por ejemplo maps.google.com/maps?...)
   if (/^https?:\/\//i.test(candidate)) {
     if (/google\.[^/]+\/maps/i.test(candidate) && !candidate.includes('output=embed')) {
       const sep = candidate.includes('?') ? '&' : '?';
@@ -70,7 +64,6 @@ export function extractIframeSrc(raw) {
     return candidate;
   }
 
-  // Si escribió una dirección o nombre directamente en el campo de mapa
   return `https://maps.google.com/maps?q=${encodeURIComponent(candidate)}&z=15&output=embed`;
 }
 
@@ -141,8 +134,6 @@ export function openGoogleMapsRoute(item) {
   );
 }
 
-const DEFAULT_PLACES_BASE = placesFromDataJs;
-
 export function getStarIconNames(ratingValue) {
   const num = Math.max(0, Math.min(5, Number(ratingValue) || 0));
   return [1, 2, 3, 4, 5].map((star) => {
@@ -152,33 +143,26 @@ export function getStarIconNames(ratingValue) {
   });
 }
 
-// La base de datos es la fuente de verdad: los datos remotos reemplazan a los
-// locales. El catálogo local solo completa campos que falten (coordenadas, mapa).
+// 100% desde MongoDB Atlas: sin mezclar con ninguna base de datos local
 export function mergeWithCatalog(remotePlaces, currentPlaces = []) {
-  if (!Array.isArray(remotePlaces) || remotePlaces.length === 0) {
-    return Array.isArray(currentPlaces) && currentPlaces.length > 0
-      ? currentPlaces
-      : DEFAULT_PLACES_BASE;
+  if (!Array.isArray(remotePlaces)) {
+    return Array.isArray(currentPlaces) ? currentPlaces : [];
   }
 
   return remotePlaces
     .filter((r) => r && r.nombre)
     .map((r) => {
       const id = r.id || r._id;
-      const base = DEFAULT_PLACES_BASE.find((b) => b.id === id) || {};
       const cleanImagen =
         typeof r.imagen === 'string' && !r.imagen.startsWith('/images/')
           ? r.imagen
           : '';
       return {
-        ...base,
         ...r,
         id,
         imagen: cleanImagen,
         imagenUrl: cleanImagen ? r.imagenUrl : '',
-        lat: r.lat ?? base.lat,
-        lng: r.lng ?? base.lng,
-        mapEmbedUrl: r.mapEmbedUrl || base.mapEmbedUrl || '',
+        mapEmbedUrl: r.mapEmbedUrl || '',
         rating: r.rating ?? '0.0',
         ratingSum: typeof r.ratingSum === 'number' ? r.ratingSum : 0,
         resenasCount: typeof r.resenasCount === 'number' ? r.resenasCount : 0,
@@ -187,7 +171,6 @@ export function mergeWithCatalog(remotePlaces, currentPlaces = []) {
           llevar: 'Calzado cómodo, agua y cámara.',
           mejorHorario: r.horario || '8:00 am – 5:00 pm',
           dificultad: 'Fácil – Moderada',
-          ...(base.tips || {}),
           ...(r.tips || {}),
         },
       };
@@ -199,5 +182,5 @@ export function normalizePlace(remote) {
 }
 
 export function getInitialPlacesCatalog() {
-  return DEFAULT_PLACES_BASE;
+  return [];
 }

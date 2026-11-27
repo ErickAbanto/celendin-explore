@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,20 +46,37 @@ export default function TabNavigator() {
           borderTopWidth: 1,
           height: 62 + bottomPad,
           paddingBottom: bottomPad,
-          paddingTop: 6,
+          paddingTop: 5,
+          paddingHorizontal: 6,
           elevation: 10,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: darkMode ? 0.35 : 0.06,
           shadowRadius: 8,
         },
+        tabBarItemStyle: {
+          borderRadius: 14,
+          marginHorizontal: 4,
+          marginVertical: 2,
+          paddingVertical: 3,
+          overflow: 'hidden',
+        },
+        tabBarActiveBackgroundColor: darkMode
+          ? 'rgba(52, 211, 153, 0.16)'
+          : '#E6F4EE',
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '700',
-          marginTop: 2,
+          marginTop: 1,
         },
         tabBarActiveTintColor: darkMode ? '#34D399' : COLORS.primary,
         tabBarInactiveTintColor: darkMode ? '#9CA3AF' : '#6B7280',
+        tabBarButton: (props) => (
+          <Pressable
+            {...props}
+            android_ripple={{ color: 'transparent' }}
+          />
+        ),
         tabBarIcon: ({ focused, color }) => {
           let iconName = 'compass-outline';
           if (route.name === 'Inicio') {
@@ -73,17 +90,8 @@ export default function TabNavigator() {
           }
 
           return (
-            <View
-              style={[
-                styles.iconWrap,
-                focused && {
-                  backgroundColor: darkMode
-                    ? 'rgba(52, 211, 153, 0.18)'
-                    : '#E6F4EE',
-                },
-              ]}
-            >
-              <Ionicons name={iconName} size={21} color={color} />
+            <View style={styles.iconWrap}>
+              <Ionicons name={iconName} size={20} color={color} />
             </View>
           );
         },
@@ -131,9 +139,7 @@ export default function TabNavigator() {
 
 const styles = StyleSheet.create({
   iconWrap: {
-    width: 48,
-    height: 30,
-    borderRadius: 15,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },

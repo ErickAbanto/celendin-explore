@@ -1,6 +1,5 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 require('dns').setServers(['8.8.8.8', '1.1.1.1']);
-const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -13,21 +12,7 @@ const {
   HomeBanner,
   EmergencyNumber,
   TransportAgency,
-  AppMeta,
 } = require('./models');
-const {
-  places,
-  directory,
-  culture,
-  gallery,
-  defaultProfile,
-} = require('./data');
-const {
-  homeBanners: seedHomeBanners,
-  emergencyNumbers: seedEmergencyNumbers,
-  transportAgencies: seedTransportAgencies,
-  legacyDirectoryIds,
-} = require('./seedExtras');
 
 // Longitud máxima para imágenes subidas en base64 (data:image/...) o links guardados en MongoDB Atlas
 const MAX_IMAGE_URL_LENGTH = 800000;
@@ -36,9 +21,6 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
-
-// Carpeta pública de imágenes servidas desde el backend: http://<host>:3000/images/<archivo>.jpg
-app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
 
 // Límites anti-spam y protección para MongoDB Atlas Free Tier (512 MB)
 const MAX_REVIEWS_PER_ITEM = 20;
@@ -60,21 +42,11 @@ function slugifyId(prefix, text) {
   return `${prefix}-${base || 'item'}-${suffix}`;
 }
 
-let mongoActivo = false;
-const memoryProfiles = {
-  [defaultProfile.deviceId]: { ...defaultProfile },
-};
-
-function withFullImageUrl(req, item) {
-  const obj = item.toObject ? item.toObject() : { ...item };
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  if (obj.imagen && obj.imagen.startsWith('/')) {
-    if (obj.imagen.startsWith('/images/')) {
-      obj.imagen = '';
-      obj.imagenUrl = '';
-    } else {
-      obj.imagenUrl = `${baseUrl}${obj.imagen}`;
-    }
+function toPlainObject(doc) {
+  if (!doc) return doc;
+  const obj = doc.toObject ? doc.toObject() : { ...doc };
+  if (typeof obj.imagen === 'string' && obj.imagen.startsWith('/images/')) {
+    obj.imagen = '';
   }
   return obj;
 }
@@ -116,27 +88,17 @@ app.get('/api/health', (_req, res) =>
   res.json({
     ok: true,
     app: 'Celendín Explore API',
-    db: mongoActivo ? 'mongodb' : 'embedded-json',
+    db: 'mongodb-atlas',
   })
 );
 
-app.get('/api/places', async (req, res) => {
+// ================= LUGARES TURÍSTICOS (100% MONGODB ATLAS) =================
+app.get('/api/places', async (_req, res) => {
   try {
-    const list = mongoActivo ? await Place.find().sort({ orden: 1 }) : places;
-    res.json(
-      list.map((doc) => {
-        const obj = withFullImageUrl(req, doc);
-        const localMatch = places.find(
-          (p) => (obj.id && p.id === obj.id) || p.nombre === obj.nombre
-        );
-        if (localMatch) {
-          obj.mapEmbedUrl = obj.mapEmbedUrl || localMatch.mapEmbedUrl || '';
-        }
-        return obj;
-      })
-    );
-  } catch (_e) {
-    res.json(places.map((doc) => withFullImageUrl(req, doc)));
+    const list = await Place.find().sort({ orden: 1, createdAt: 1 });
+    return res.json(list.map(toPlainObject));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 });
 
@@ -193,77 +155,58 @@ app.post('/api/places', async (req, res) => {
       .trim()
       .slice(0, 160);
   const mapEmbedUrl = String(body.mapEmbedUrl || '').trim().slice(0, 600);
-  const latNum = Number(body.lat);
-  const lngNum = Number(body.lng);
-
-  const newPlaceData = {
-    id: String(body.id || '').trim().slice(0, 60) || slugifyId('lugar', nombre),
-    nombre,
-    ubicacion,
-    direccionCorta,
-    distancia,
-    distanciaCorta,
-    distanciaGrid: distanciaCorta,
-    altitudTexto,
-    categoria,
-    categoriaFiltro: String(body.categoriaFiltro || categoria).trim().slice(0, 30),
-    precioTexto,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    etiquetaDestacado,
-    mapsLabel: `Google Maps: ${nombre}`.slice(0, 70),
-    horario,
-    tiempoEstimado,
-    tips: {
-      llevar:
-        String(body.tips?.llevar || 'Calzado cómodo, agua, bloqueador solar y cámara.')
-          .trim()
-          .slice(0, 200),
-      mejorHorario:
-        String(body.tips?.mejorHorario || horario).trim().slice(0, 120),
-      dificultad:
-        String(body.tips?.dificultad || 'Fácil – Moderada.').trim().slice(0, 120),
-    },
-    resenas: [],
-    desc,
-    historia,
-    actividades,
-    imagen,
-    mapEmbedUrl,
-    ...(Number.isFinite(latNum) && body.lat !== '' && body.lat !== null
-      ? { lat: latNum }
-      : {}),
-    ...(Number.isFinite(lngNum) && body.lng !== '' && body.lng !== null
-      ? { lng: lngNum }
-      : {}),
-    mapsQuery,
-    defaultSaved: false,
-    esExperienciaHoy: Boolean(body.esExperienciaHoy),
-    orden: places.length + 1,
-  };
 
   try {
-    if (mongoActivo) {
-      const count = await Place.countDocuments();
-      if (count >= MAX_PLACES_FREE_TIER) {
-        return res.status(409).json({
-          error: `Límite máximo de ${MAX_PLACES_FREE_TIER} lugares alcanzado.`,
-        });
-      }
-      newPlaceData.orden = count + 1;
-      const created = await Place.create(newPlaceData);
-      places.push(newPlaceData);
-      return res.status(201).json(withFullImageUrl(req, created));
-    }
-
-    if (places.length >= MAX_PLACES_FREE_TIER) {
+    const count = await Place.countDocuments();
+    if (count >= MAX_PLACES_FREE_TIER) {
       return res.status(409).json({
         error: `Límite máximo de ${MAX_PLACES_FREE_TIER} lugares alcanzado.`,
       });
     }
-    places.push(newPlaceData);
-    return res.status(201).json(withFullImageUrl(req, newPlaceData));
+
+    const newPlaceData = {
+      id: String(body.id || '').trim().slice(0, 60) || slugifyId('lugar', nombre),
+      nombre,
+      ubicacion,
+      direccionCorta,
+      distancia,
+      distanciaCorta,
+      distanciaGrid: distanciaCorta,
+      altitudTexto,
+      categoria,
+      categoriaFiltro: String(body.categoriaFiltro || categoria).trim().slice(0, 30),
+      precioTexto,
+      rating: '0.0',
+      ratingSum: 0,
+      resenasCount: 0,
+      etiquetaDestacado,
+      mapsLabel: `Google Maps: ${nombre}`.slice(0, 70),
+      horario,
+      tiempoEstimado,
+      tips: {
+        llevar:
+          String(body.tips?.llevar || 'Calzado cómodo, agua, bloqueador solar y cámara.')
+            .trim()
+            .slice(0, 200),
+        mejorHorario:
+          String(body.tips?.mejorHorario || horario).trim().slice(0, 120),
+        dificultad:
+          String(body.tips?.dificultad || 'Fácil – Moderada.').trim().slice(0, 120),
+      },
+      resenas: [],
+      desc,
+      historia,
+      actividades,
+      imagen,
+      mapEmbedUrl,
+      mapsQuery,
+      defaultSaved: false,
+      esExperienciaHoy: Boolean(body.esExperienciaHoy),
+      orden: count + 1,
+    };
+
+    const created = await Place.create(newPlaceData);
+    return res.status(201).json(toPlainObject(created));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -308,12 +251,6 @@ app.put('/api/places/:placeId', async (req, res) => {
   if (typeof body.tiempoEstimado === 'string') {
     updates.tiempoEstimado = body.tiempoEstimado.trim().slice(0, 80);
   }
-  if (typeof body.actividades === 'string') {
-    updates.actividades = body.actividades.trim().slice(0, 300);
-  }
-  if (typeof body.historia === 'string') {
-    updates.historia = body.historia.trim().slice(0, 450);
-  }
   if (typeof body.desc === 'string' && body.desc.trim()) {
     updates.desc = body.desc.trim().slice(0, 450);
   }
@@ -325,22 +262,6 @@ app.put('/api/places/:placeId', async (req, res) => {
   }
   if (typeof body.mapsQuery === 'string') {
     updates.mapsQuery = body.mapsQuery.trim().slice(0, 160);
-  }
-  if (body.lat !== undefined) {
-    const latNum = Number(body.lat);
-    if (body.lat !== '' && body.lat !== null && Number.isFinite(latNum)) {
-      updates.lat = latNum;
-    } else {
-      updates.lat = undefined;
-    }
-  }
-  if (body.lng !== undefined) {
-    const lngNum = Number(body.lng);
-    if (body.lng !== '' && body.lng !== null && Number.isFinite(lngNum)) {
-      updates.lng = lngNum;
-    } else {
-      updates.lng = undefined;
-    }
   }
   if (body.tips && typeof body.tips === 'object') {
     updates.tips = {
@@ -357,26 +278,15 @@ app.put('/api/places/:placeId', async (req, res) => {
   }
 
   try {
-    const idx = places.findIndex((p) => p.id === placeId);
-    if (idx !== -1) {
-      places[idx] = { ...places[idx], ...updates };
+    const updated = await Place.findOneAndUpdate(
+      { id: placeId },
+      { $set: updates },
+      { new: true }
+    );
+    if (!updated) {
+      return res.status(404).json({ error: 'Lugar no encontrado en MongoDB Atlas' });
     }
-
-    if (mongoActivo) {
-      const updated = await Place.findOneAndUpdate(
-        { id: placeId },
-        { $set: updates },
-        { new: true }
-      );
-      if (updated) {
-        return res.json(withFullImageUrl(req, updated));
-      }
-    }
-
-    if (idx === -1) {
-      return res.status(404).json({ error: 'Lugar no encontrado' });
-    }
-    return res.json(withFullImageUrl(req, places[idx]));
+    return res.json(toPlainObject(updated));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -385,15 +295,7 @@ app.put('/api/places/:placeId', async (req, res) => {
 app.delete('/api/places/:placeId', async (req, res) => {
   const { placeId } = req.params;
   try {
-    const idx = places.findIndex((p) => p.id === placeId);
-    if (idx !== -1) {
-      places.splice(idx, 1);
-    }
-
-    if (mongoActivo) {
-      await Place.deleteOne({ id: placeId });
-    }
-
+    await Place.deleteOne({ id: placeId });
     return res.json({ ok: true, id: placeId });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -411,79 +313,55 @@ app.post('/api/places/:placeId/reviews', async (req, res) => {
   const { rating, reviewEntry } = formatReviewInput(req.body);
 
   try {
-    if (mongoActivo) {
-      const updateOps = {
-        $inc: { resenasCount: 1, ratingSum: rating },
+    const updateOps = {
+      $inc: { resenasCount: 1, ratingSum: rating },
+    };
+    if (reviewEntry) {
+      updateOps.$push = {
+        resenas: {
+          $each: [reviewEntry],
+          $position: 0,
+          $slice: MAX_REVIEWS_PER_ITEM,
+        },
       };
-      if (reviewEntry) {
-        updateOps.$push = {
-          resenas: {
-            $each: [reviewEntry],
-            $position: 0,
-            $slice: MAX_REVIEWS_PER_ITEM,
-          },
-        };
-      }
-
-      const updated = await Place.findOneAndUpdate(
-        { id: placeId, resenasCount: { $lt: MAX_REVIEWS_PER_ITEM } },
-        updateOps,
-        { new: true }
-      );
-      if (!updated) {
-        const exists = await Place.exists({ id: placeId });
-        if (!exists) {
-          return res.status(404).json({ error: 'Lugar no encontrado' });
-        }
-        return res.status(409).json({
-          error: `Límite máximo de ${MAX_REVIEWS_PER_ITEM} reseñas alcanzado para este destino.`,
-          limitReached: true,
-        });
-      }
-
-      const avg =
-        updated.resenasCount > 0
-          ? (updated.ratingSum / updated.resenasCount).toFixed(1)
-          : '0.0';
-      updated.rating = avg;
-      await updated.save();
-
-      return res.status(201).json(withFullImageUrl(req, updated));
     }
 
-    const target = places.find((p) => p.id === placeId);
-    if (!target) {
-      return res.status(404).json({ error: 'Lugar no encontrado' });
-    }
-    if ((Number(target.resenasCount) || 0) >= MAX_REVIEWS_PER_ITEM) {
+    const updated = await Place.findOneAndUpdate(
+      { id: placeId, resenasCount: { $lt: MAX_REVIEWS_PER_ITEM } },
+      updateOps,
+      { new: true }
+    );
+    if (!updated) {
+      const exists = await Place.exists({ id: placeId });
+      if (!exists) {
+        return res.status(404).json({ error: 'Lugar no encontrado' });
+      }
       return res.status(409).json({
         error: `Límite máximo de ${MAX_REVIEWS_PER_ITEM} reseñas alcanzado para este destino.`,
         limitReached: true,
       });
     }
-    target.resenasCount = (Number(target.resenasCount) || 0) + 1;
-    target.ratingSum = (Number(target.ratingSum) || 0) + rating;
-    target.rating = (target.ratingSum / target.resenasCount).toFixed(1);
-    if (reviewEntry) {
-      target.resenas = [reviewEntry, ...(target.resenas || [])].slice(
-        0,
-        MAX_REVIEWS_PER_ITEM
-      );
-    }
-    return res.status(201).json(withFullImageUrl(req, target));
+
+    const avg =
+      updated.resenasCount > 0
+        ? (updated.ratingSum / updated.resenasCount).toFixed(1)
+        : '0.0';
+    updated.rating = avg;
+    await updated.save();
+
+    return res.status(201).json(toPlainObject(updated));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 });
 
-app.get('/api/directory', async (req, res) => {
+// ================= DIRECTORIO (100% MONGODB ATLAS) =================
+app.get('/api/directory', async (_req, res) => {
   try {
-    const list = mongoActivo
-      ? await DirectoryItem.find().sort({ orden: 1 })
-      : directory;
-    res.json(list.map((doc) => withFullImageUrl(req, doc)));
-  } catch (_e) {
-    res.json(directory.map((doc) => withFullImageUrl(req, doc)));
+    const list = await DirectoryItem.find().sort({ orden: 1, createdAt: 1 });
+    return res.json(list.map(toPlainObject));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 });
 
@@ -507,7 +385,7 @@ app.post('/api/directory', async (req, res) => {
   }
 
   const badge =
-    String(body.badge || 'Recomendado').trim().slice(0, 35) || 'Recomendado';
+    String(body.badge || categoria || 'Recomendado').trim().slice(0, 35) || 'Recomendado';
   const rangoPrecio =
     String(body.rangoPrecio || 'S/ 15 - S/ 45').trim().slice(0, 35) ||
     'S/ 15 - S/ 45';
@@ -524,45 +402,34 @@ app.post('/api/directory', async (req, res) => {
     : `+${whatsapp}`;
   const imagen = String(body.imagen || '').trim().slice(0, MAX_IMAGE_URL_LENGTH);
 
-  const newDirItem = {
-    id: String(body.id || '').trim().slice(0, 60) || slugifyId('dir', nombre),
-    categoria,
-    badge,
-    rangoPrecio,
-    nombre,
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad,
-    direccion,
-    telefono,
-    whatsapp,
-    imagen,
-    orden: directory.length + 1,
-  };
-
   try {
-    if (mongoActivo) {
-      const count = await DirectoryItem.countDocuments();
-      if (count >= MAX_DIRECTORY_FREE_TIER) {
-        return res.status(409).json({
-          error: `Límite máximo de ${MAX_DIRECTORY_FREE_TIER} establecimientos alcanzado.`,
-        });
-      }
-      newDirItem.orden = count + 1;
-      const created = await DirectoryItem.create(newDirItem);
-      directory.push(newDirItem);
-      return res.status(201).json(withFullImageUrl(req, created));
-    }
-
-    if (directory.length >= MAX_DIRECTORY_FREE_TIER) {
+    const count = await DirectoryItem.countDocuments();
+    if (count >= MAX_DIRECTORY_FREE_TIER) {
       return res.status(409).json({
         error: `Límite máximo de ${MAX_DIRECTORY_FREE_TIER} establecimientos alcanzado.`,
       });
     }
-    directory.push(newDirItem);
-    return res.status(201).json(withFullImageUrl(req, newDirItem));
+
+    const newDirItem = {
+      id: String(body.id || '').trim().slice(0, 60) || slugifyId('dir', nombre),
+      categoria,
+      badge,
+      rangoPrecio,
+      nombre,
+      verificado: true,
+      rating: '0.0',
+      ratingSum: 0,
+      resenasCount: 0,
+      especialidad,
+      direccion,
+      telefono,
+      whatsapp,
+      imagen,
+      orden: count + 1,
+    };
+
+    const created = await DirectoryItem.create(newDirItem);
+    return res.status(201).json(toPlainObject(created));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -606,26 +473,15 @@ app.put('/api/directory/:itemId', async (req, res) => {
   }
 
   try {
-    const idx = directory.findIndex((d) => d.id === itemId);
-    if (idx !== -1) {
-      directory[idx] = { ...directory[idx], ...updates };
+    const updated = await DirectoryItem.findOneAndUpdate(
+      { id: itemId },
+      { $set: updates },
+      { new: true }
+    );
+    if (!updated) {
+      return res.status(404).json({ error: 'Establecimiento no encontrado en MongoDB Atlas' });
     }
-
-    if (mongoActivo) {
-      const updated = await DirectoryItem.findOneAndUpdate(
-        { id: itemId },
-        { $set: updates },
-        { new: true }
-      );
-      if (updated) {
-        return res.json(withFullImageUrl(req, updated));
-      }
-    }
-
-    if (idx === -1) {
-      return res.status(404).json({ error: 'Establecimiento no encontrado' });
-    }
-    return res.json(withFullImageUrl(req, directory[idx]));
+    return res.json(toPlainObject(updated));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -634,15 +490,7 @@ app.put('/api/directory/:itemId', async (req, res) => {
 app.delete('/api/directory/:itemId', async (req, res) => {
   const { itemId } = req.params;
   try {
-    const idx = directory.findIndex((d) => d.id === itemId);
-    if (idx !== -1) {
-      directory.splice(idx, 1);
-    }
-
-    if (mongoActivo) {
-      await DirectoryItem.deleteOne({ id: itemId });
-    }
-
+    await DirectoryItem.deleteOne({ id: itemId });
     return res.json({ ok: true, id: itemId });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -660,56 +508,33 @@ app.post('/api/directory/:itemId/reviews', async (req, res) => {
   const rating = Math.min(5, Math.max(1, Math.round(Number(req.body?.rating) || 5)));
 
   try {
-    if (mongoActivo) {
-      const updated = await DirectoryItem.findOneAndUpdate(
-        { id: itemId, resenasCount: { $lt: MAX_REVIEWS_PER_ITEM } },
-        { $inc: { resenasCount: 1, ratingSum: rating } },
-        { new: true }
-      );
-      if (!updated) {
-        const exists = await DirectoryItem.exists({ id: itemId });
-        if (!exists) {
-          return res.status(404).json({ error: 'Establecimiento no encontrado' });
-        }
-        return res.status(409).json({
-          error: `Límite máximo de ${MAX_REVIEWS_PER_ITEM} calificaciones alcanzado.`,
-          limitReached: true,
-        });
+    const updated = await DirectoryItem.findOneAndUpdate(
+      { id: itemId, resenasCount: { $lt: MAX_REVIEWS_PER_ITEM } },
+      { $inc: { resenasCount: 1, ratingSum: rating } },
+      { new: true }
+    );
+    if (!updated) {
+      const exists = await DirectoryItem.exists({ id: itemId });
+      if (!exists) {
+        return res.status(404).json({ error: 'Establecimiento no encontrado' });
       }
-      updated.rating =
-        updated.resenasCount > 0
-          ? (updated.ratingSum / updated.resenasCount).toFixed(1)
-          : '0.0';
-      await updated.save();
-      return res.status(201).json(withFullImageUrl(req, updated));
-    }
-
-    const target = directory.find((d) => d.id === itemId);
-    if (!target) {
-      return res.status(404).json({ error: 'Establecimiento no encontrado' });
-    }
-    if ((Number(target.resenasCount) || 0) >= MAX_REVIEWS_PER_ITEM) {
       return res.status(409).json({
         error: `Límite máximo de ${MAX_REVIEWS_PER_ITEM} calificaciones alcanzado.`,
         limitReached: true,
       });
     }
-    target.resenasCount = (Number(target.resenasCount) || 0) + 1;
-    target.ratingSum = (Number(target.ratingSum) || 0) + rating;
-    target.rating = (target.ratingSum / target.resenasCount).toFixed(1);
-    return res.status(201).json(withFullImageUrl(req, target));
+    updated.rating =
+      updated.resenasCount > 0
+        ? (updated.ratingSum / updated.resenasCount).toFixed(1)
+        : '0.0';
+    await updated.save();
+    return res.status(201).json(toPlainObject(updated));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 });
 
-// ================= COLECCIONES ADMINISTRABLES: INICIO, EMERGENCIAS, TRANSPORTE =================
-const memoryCollections = {
-  banners: seedHomeBanners.map((b) => ({ ...b })),
-  emergencies: seedEmergencyNumbers.map((e) => ({ ...e })),
-  transport: seedTransportAgencies.map((t) => ({ ...t })),
-};
-
+// ================= PERFIL (EMERGENCIAS Y TRANSPORTE 100% MONGODB ATLAS) =================
 const cleanText = (value, max) => String(value || '').trim().slice(0, max);
 
 const HOME_DESTINATIONS = ['Directorio', 'Lugares', 'Perfil / Offline'];
@@ -742,19 +567,15 @@ function sanitizeTransport(body) {
   };
 }
 
-function registerSimpleCrud({ route, Model, memKey, prefix, sanitize, required, max = 40 }) {
-  const toPlain = (doc) => (doc && doc.toObject ? doc.toObject() : doc);
+function registerAtlasCrud({ route, Model, prefix, sanitize, required, max = 40 }) {
   const missingFields = (data) => required.filter((k) => !data[k]);
 
   app.get(`/api/${route}`, async (_req, res) => {
     try {
-      if (mongoActivo) {
-        const list = await Model.find().sort({ orden: 1, createdAt: 1 }).lean();
-        return res.json(list);
-      }
-      return res.json(memoryCollections[memKey]);
-    } catch (_e) {
-      return res.json(memoryCollections[memKey]);
+      const list = await Model.find().sort({ orden: 1, createdAt: 1 }).lean();
+      return res.json(list);
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
     }
   });
 
@@ -767,22 +588,13 @@ function registerSimpleCrud({ route, Model, memKey, prefix, sanitize, required, 
     data.id = cleanText(req.body?.id, 60) || slugifyId(prefix, data[required[0]]);
 
     try {
-      if (mongoActivo) {
-        const count = await Model.countDocuments();
-        if (count >= max) {
-          return res.status(409).json({ error: `Límite máximo de ${max} registros alcanzado.` });
-        }
-        data.orden = count + 1;
-        const created = await Model.create(data);
-        return res.status(201).json(toPlain(created));
-      }
-      const list = memoryCollections[memKey];
-      if (list.length >= max) {
+      const count = await Model.countDocuments();
+      if (count >= max) {
         return res.status(409).json({ error: `Límite máximo de ${max} registros alcanzado.` });
       }
-      data.orden = list.length + 1;
-      list.push(data);
-      return res.status(201).json(data);
+      data.orden = count + 1;
+      const created = await Model.create(data);
+      return res.status(201).json(toPlainObject(created));
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
@@ -797,20 +609,13 @@ function registerSimpleCrud({ route, Model, memKey, prefix, sanitize, required, 
     }
 
     try {
-      if (mongoActivo) {
-        const updated = await Model.findOneAndUpdate(
-          { id: itemId },
-          { $set: data },
-          { new: true }
-        );
-        if (!updated) return res.status(404).json({ error: 'Registro no encontrado' });
-        return res.json(toPlain(updated));
-      }
-      const list = memoryCollections[memKey];
-      const idx = list.findIndex((i) => i.id === itemId);
-      if (idx === -1) return res.status(404).json({ error: 'Registro no encontrado' });
-      list[idx] = { ...list[idx], ...data };
-      return res.json(list[idx]);
+      const updated = await Model.findOneAndUpdate(
+        { id: itemId },
+        { $set: data },
+        { new: true }
+      );
+      if (!updated) return res.status(404).json({ error: 'Registro no encontrado en MongoDB Atlas' });
+      return res.json(toPlainObject(updated));
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
@@ -819,11 +624,7 @@ function registerSimpleCrud({ route, Model, memKey, prefix, sanitize, required, 
   app.delete(`/api/${route}/:itemId`, async (req, res) => {
     const { itemId } = req.params;
     try {
-      if (mongoActivo) {
-        await Model.deleteOne({ id: itemId });
-      } else {
-        memoryCollections[memKey] = memoryCollections[memKey].filter((i) => i.id !== itemId);
-      }
+      await Model.deleteOne({ id: itemId });
       return res.json({ ok: true, id: itemId });
     } catch (e) {
       return res.status(500).json({ error: e.message });
@@ -831,84 +632,77 @@ function registerSimpleCrud({ route, Model, memKey, prefix, sanitize, required, 
   });
 }
 
-registerSimpleCrud({
+registerAtlasCrud({
   route: 'banners',
   Model: HomeBanner,
-  memKey: 'banners',
   prefix: 'home',
   sanitize: sanitizeBanner,
   required: ['titulo'],
 });
 
-registerSimpleCrud({
+registerAtlasCrud({
   route: 'emergencies',
   Model: EmergencyNumber,
-  memKey: 'emergencies',
   prefix: 'sos',
   sanitize: sanitizeEmergency,
   required: ['titulo', 'numero'],
 });
 
-registerSimpleCrud({
+registerAtlasCrud({
   route: 'transport',
   Model: TransportAgency,
-  memKey: 'transport',
   prefix: 'bus',
   sanitize: sanitizeTransport,
   required: ['empresa', 'ruta', 'terminal'],
 });
 
-app.get('/api/culture', async (req, res) => {
+app.get('/api/culture', async (_req, res) => {
   try {
-    const list = mongoActivo
-      ? await Culture.find().sort({ orden: 1 })
-      : culture;
-    res.json(list.map((doc) => withFullImageUrl(req, doc)));
-  } catch (_e) {
-    res.json(culture.map((doc) => withFullImageUrl(req, doc)));
+    const list = await Culture.find().sort({ orden: 1 });
+    return res.json(list.map(toPlainObject));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 });
 
-app.get('/api/images', async (req, res) => {
+app.get('/api/images', async (_req, res) => {
   try {
-    const list = mongoActivo
-      ? await GalleryImage.find().sort({ orden: 1 })
-      : gallery;
-    res.json(list.map((doc) => withFullImageUrl(req, doc)));
-  } catch (_e) {
-    res.json(gallery.map((doc) => withFullImageUrl(req, doc)));
+    const list = await GalleryImage.find().sort({ orden: 1 });
+    return res.json(list.map(toPlainObject));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 });
 
 app.get('/api/profile/:deviceId', async (req, res) => {
-  const deviceId = String(req.params.deviceId || defaultProfile.deviceId)
+  const deviceId = String(req.params.deviceId || 'explorador-shilico')
     .trim()
     .slice(0, 64);
 
   try {
-    if (mongoActivo) {
-      const existing = await UserProfile.findOne({ deviceId });
-      if (existing) return res.json(existing);
+    const existing = await UserProfile.findOne({ deviceId });
+    if (existing) return res.json(existing);
 
-      const totalProfiles = await UserProfile.countDocuments();
-      if (totalProfiles >= MAX_PROFILES_FREE_TIER) {
-        return res.json({ ...defaultProfile, deviceId });
-      }
-      const created = await UserProfile.create({ ...defaultProfile, deviceId });
-      return res.json(created);
+    const defaultProf = {
+      deviceId,
+      savedPlaceIds: [],
+      darkMode: false,
+      language: 'es',
+      offlineReady: false,
+    };
+    const totalProfiles = await UserProfile.countDocuments();
+    if (totalProfiles >= MAX_PROFILES_FREE_TIER) {
+      return res.json(defaultProf);
     }
-
-    if (!memoryProfiles[deviceId]) {
-      memoryProfiles[deviceId] = { ...defaultProfile, deviceId };
-    }
-    return res.json(memoryProfiles[deviceId]);
+    const created = await UserProfile.create(defaultProf);
+    return res.json(created);
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 });
 
 app.put('/api/profile/:deviceId', async (req, res) => {
-  const deviceId = String(req.params.deviceId || defaultProfile.deviceId)
+  const deviceId = String(req.params.deviceId || 'explorador-shilico')
     .trim()
     .slice(0, 64);
 
@@ -930,30 +724,15 @@ app.put('/api/profile/:deviceId', async (req, res) => {
   }
 
   try {
-    if (mongoActivo) {
-      const existing = await UserProfile.findOne({ deviceId });
-      if (!existing) {
-        const totalProfiles = await UserProfile.countDocuments();
-        if (totalProfiles >= MAX_PROFILES_FREE_TIER) {
-          return res.json({ ...defaultProfile, deviceId, ...updates });
-        }
-      }
-      const profile = await UserProfile.findOneAndUpdate(
-        { deviceId },
-        {
-          $set: updates,
-          $setOnInsert: { deviceId },
-        },
-        { new: true, upsert: true }
-      );
-      return res.json(profile);
-    }
-
-    memoryProfiles[deviceId] = {
-      ...(memoryProfiles[deviceId] || { ...defaultProfile, deviceId }),
-      ...updates,
-    };
-    return res.json(memoryProfiles[deviceId]);
+    const profile = await UserProfile.findOneAndUpdate(
+      { deviceId },
+      {
+        $set: updates,
+        $setOnInsert: { deviceId },
+      },
+      { new: true, upsert: true }
+    );
+    return res.json(profile);
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -961,91 +740,9 @@ app.put('/api/profile/:deviceId', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// Sincronización única: reemplaza datos antiguos/ficticios de la BD por los datos
-// reales de Celendín y limpia imágenes predeterminadas (/images/...).
-const SEED_VERSION = 3;
-
-async function syncRealSeedData() {
-  try {
-    // Limpia cualquier imagen predefinida (/images/...) en la BD para que solo queden las subidas por el usuario
-    await Place.updateMany(
-      { imagen: { $regex: '^/images/' } },
-      { $set: { imagen: '' } }
-    );
-    await DirectoryItem.updateMany(
-      { imagen: { $regex: '^/images/' } },
-      { $set: { imagen: '' } }
-    );
-    await Culture.updateMany(
-      { imagen: { $regex: '^/images/' } },
-      { $set: { imagen: '' } }
-    );
-    await GalleryImage.updateMany(
-      { imagen: { $regex: '^/images/' } },
-      { $set: { imagen: '' } }
-    );
-
-    const meta = await AppMeta.findOne({ key: 'seed' });
-    if (meta && meta.version >= SEED_VERSION) return;
-
-    const RATING_KEYS = ['rating', 'ratingSum', 'resenasCount', 'resenas'];
-    const splitRating = (item) => {
-      const content = { ...item };
-      RATING_KEYS.forEach((k) => delete content[k]);
-      return content;
-    };
-
-    for (const p of places) {
-      await Place.updateOne(
-        { id: p.id },
-        {
-          $set: splitRating(p),
-          $setOnInsert: { rating: '0.0', ratingSum: 0, resenasCount: 0, resenas: [] },
-        },
-        { upsert: true }
-      );
-    }
-
-    await DirectoryItem.deleteMany({ id: { $in: legacyDirectoryIds } });
-    for (const d of directory) {
-      await DirectoryItem.updateOne(
-        { id: d.id },
-        {
-          $set: splitRating(d),
-          $setOnInsert: { rating: '0.0', ratingSum: 0, resenasCount: 0 },
-        },
-        { upsert: true }
-      );
-    }
-
-    if ((await HomeBanner.countDocuments()) === 0) {
-      await HomeBanner.insertMany(seedHomeBanners);
-    }
-    if ((await EmergencyNumber.countDocuments()) === 0) {
-      await EmergencyNumber.insertMany(seedEmergencyNumbers);
-    }
-    if ((await TransportAgency.countDocuments()) === 0) {
-      await TransportAgency.insertMany(seedTransportAgencies);
-    }
-
-    await AppMeta.updateOne(
-      { key: 'seed' },
-      { $set: { version: SEED_VERSION } },
-      { upsert: true }
-    );
-    console.log(`Datos reales sincronizados en MongoDB (versión ${SEED_VERSION})`);
-  } catch (e) {
-    console.warn('No se pudo sincronizar los datos semilla:', e.message);
-  }
-}
-
 function iniciarServidor() {
   const srv = app.listen(PORT, '0.0.0.0', () =>
-    console.log(
-      `API e Imágenes en http://0.0.0.0:${PORT} (DB: ${
-        mongoActivo ? 'MongoDB' : 'JSON integrado'
-      })`
-    )
+    console.log(`API conectada 100% a MongoDB Atlas en http://0.0.0.0:${PORT}`)
   );
   srv.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
@@ -1057,27 +754,21 @@ function iniciarServidor() {
 }
 
 mongoose
-  .connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 4000 })
+  .connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 8000 })
   .then(async () => {
-    mongoActivo = true;
-    console.log('MongoDB conectado (Celendín Explore)');
-    const placeCount = await Place.countDocuments();
-    if (placeCount === 0) {
-      await Place.insertMany(places);
-      await Culture.insertMany(culture);
-      await GalleryImage.insertMany(gallery);
-    }
-    const dirCount = await DirectoryItem.countDocuments();
-    if (dirCount === 0) {
-      await DirectoryItem.insertMany(directory);
-    }
-    await syncRealSeedData();
+    console.log('MongoDB Atlas conectado en la nube (Celendín Explore)');
+    // Limpia cualquier referencia antigua a /images/ en la nube
+    await Place.updateMany(
+      { imagen: { $regex: '^/images/' } },
+      { $set: { imagen: '' } }
+    );
+    await DirectoryItem.updateMany(
+      { imagen: { $regex: '^/images/' } },
+      { $set: { imagen: '' } }
+    );
     iniciarServidor();
   })
   .catch((e) => {
-    console.warn(
-      'MongoDB no disponible, usando base de datos JSON integrada sin costo:',
-      e.message
-    );
+    console.error('Error conectando a MongoDB Atlas:', e.message);
     iniciarServidor();
   });

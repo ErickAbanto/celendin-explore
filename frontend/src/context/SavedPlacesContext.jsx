@@ -33,199 +33,10 @@ const DEVICE_ID = 'explorador-shilico';
 export const MAX_REVIEWS_PER_ITEM = 20;
 const SavedPlacesContext = createContext(null);
 
-const LEGACY_FICTITIOUS_DIR_IDS = new Set([
-  'dir-tradicion-shilica',
-  'dir-chocolateria-eden',
-  'dir-taller-toquilla',
-  'dir-hotel-edendelnorte',
-  'dir-posada-san-isidro',
-]);
-
-export const INITIAL_HOME_BANNERS = [
-  {
-    id: 'inicio-portada',
-    etiqueta: 'Portada',
-    titulo: 'Explora Celendín',
-    subtitulo:
-      'Naturaleza, cultura y gastronomía en la provincia de Celendín, Cajamarca.',
-    destino: 'Lugares',
-  },
-];
-
-export const INITIAL_EMERGENCY_NUMBERS = [
-  {
-    id: 'pnp',
-    titulo: 'Comisaría PNP Celendín',
-    numero: '964 765 077',
-    tel: '964765077',
-    detalle: 'Av. Cajamarca Cdra. 1 · Central 105',
-  },
-  {
-    id: 'hospital',
-    titulo: 'Hospital de Apoyo Celendín',
-    numero: '971 764 243',
-    tel: '971764243',
-    detalle: 'Av. Túpac Amaru S/N · Emergencias',
-  },
-  {
-    id: 'samu',
-    titulo: 'SAMU Emergencias',
-    numero: '106',
-    tel: '106',
-    detalle: 'Atención médica gratuita',
-  },
-];
-
-export const INITIAL_BUS_AGENCIES = [
-  {
-    id: 'bus-palacios',
-    tipo: 'buses',
-    empresa: 'Transportes Palacios',
-    ruta: 'Celendín ↔ Cajamarca (Salidas mañana y tarde)',
-    terminal: 'Jr. Pardo Nº 462, Celendín',
-  },
-  {
-    id: 'bus-royal-palace',
-    tipo: 'buses',
-    empresa: "Transportes Royal Palace's",
-    ruta: 'Celendín ↔ Cajamarca ↔ Lima',
-    terminal: 'Jr. Unión Nº 405, Celendín',
-  },
-  {
-    id: 'bus-virgen-carmen',
-    tipo: 'buses',
-    empresa: 'Turismo Virgen del Carmen',
-    ruta: 'Celendín ↔ Cajamarca',
-    terminal: 'Terminal Terrestre · Jr. Cáceres Nº 142, Celendín',
-  },
-  {
-    id: 'combi-araujo',
-    tipo: 'combis',
-    empresa: 'Transportes Araujo (Combis / Minivans)',
-    ruta: 'Celendín ↔ Cajamarca (Salidas desde las 5:00 AM)',
-    terminal: 'Terminal Terrestre · Jr. Cáceres Nº 142 (Of. 03), Celendín',
-  },
-  {
-    id: 'combi-rojas',
-    tipo: 'combis',
-    empresa: 'Transporte y Turismo Rojas',
-    ruta: 'Celendín ↔ La Encañada ↔ Cajamarca',
-    terminal: 'Av. Amazonas Nº 313, Celendín',
-  },
-  {
-    id: 'auto-colectivos-caceres',
-    tipo: 'autos',
-    empresa: 'Autos Colectivos Directos a Cajamarca',
-    ruta: 'Celendín ↔ Cajamarca (~2h directo vía asfaltada)',
-    terminal: 'Jr. Cáceres Nº 114 – 142 (Entorno Terminal Terrestre)',
-  },
-  {
-    id: 'auto-manantial',
-    tipo: 'autos',
-    empresa: 'Colectivos El Manantial / Regionales',
-    ruta: 'Celendín ↔ Cajamarca (Salidas continuas al completar 4 pasajeros)',
-    terminal: 'Jr. Cáceres con Jr. Dos de Mayo, Celendín',
-  },
-];
-
-export const INITIAL_VERIFIED_DIRECTORY = [
-  {
-    id: 'dir-la-reserve',
-    categoria: 'Gastronomía',
-    badge: 'Restaurante',
-    rangoPrecio: 'S/ 20 - S/ 45',
-    nombre: 'Restaurant La Reserve',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Cuy frito, cecina shilica y platos típicos',
-    direccion: 'Jr. José Gálvez 404-A, Celendín',
-    telefono: '+51976579996',
-    whatsapp: '51976579996',
-    imagen: '',
-  },
-  {
-    id: 'dir-chokosol',
-    categoria: 'Gastronomía',
-    badge: 'Chocolatería',
-    rangoPrecio: 'S/ 10 - S/ 35',
-    nombre: 'Chocolatería Chokosol',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Chocolate artesanal de taza 100% cacao',
-    direccion: 'Jr. Dos de Mayo 713, Celendín',
-    telefono: '+51931361444',
-    whatsapp: '51931361444',
-    imagen: '',
-  },
-  {
-    id: 'dir-intimachay',
-    categoria: 'Gastronomía',
-    badge: 'Cafetería',
-    rangoPrecio: 'S/ 15 - S/ 40',
-    nombre: 'Cafetería Intimachay',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Café de especialidad y comida campestre',
-    direccion: 'Km 3 Carretera Celendín – Cajamarca',
-    telefono: '+51954366114',
-    whatsapp: '51954366114',
-    imagen: '',
-  },
-  {
-    id: 'dir-ecosol-toquilla',
-    categoria: 'Artesanía',
-    badge: 'Artesanía',
-    rangoPrecio: 'S/ 15 - S/ 320',
-    nombre: 'Eco Sol & Shilicolate',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Sombreros de paja toquilla y chocolates',
-    direccion: 'Jr. Cáceres 820, Celendín',
-    telefono: '+51949828838',
-    whatsapp: '51949828838',
-    imagen: '',
-  },
-  {
-    id: 'dir-hotel-loyers',
-    categoria: 'Hoteles',
-    badge: 'Hotel',
-    rangoPrecio: 'S/ 70 - S/ 150',
-    nombre: "Hotel Loyer's",
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Habitaciones con Wi-Fi, agua caliente y cochera',
-    direccion: 'Jr. José Gálvez 410, Celendín',
-    telefono: '+51076555210',
-    whatsapp: '51995934231',
-    imagen: '',
-  },
-  {
-    id: 'dir-hostal-celendin',
-    categoria: 'Hoteles',
-    badge: 'Hostal',
-    rangoPrecio: 'S/ 60 - S/ 130',
-    nombre: 'Hostal Celendín',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Hospedaje frente a la Plaza de Armas y restaurante',
-    direccion: 'Jr. Unión 305, Plaza de Armas',
-    telefono: '+51995934231',
-    whatsapp: '51995934231',
-    imagen: '',
-  },
-];
+export const INITIAL_HOME_BANNERS = [];
+export const INITIAL_EMERGENCY_NUMBERS = [];
+export const INITIAL_BUS_AGENCIES = [];
+export const INITIAL_VERIFIED_DIRECTORY = [];
 
 function buildSlugId(prefix, text) {
   const base = String(text || '')
@@ -321,30 +132,38 @@ export function SavedPlacesProvider({ children }) {
           transportApi.list(),
         ]);
 
-      if (hasItems(placesRes)) {
-        setPlaces((prev) =>
-          mergeWithCatalog(placesRes.value, prev).filter(
+      if (placesRes.status === 'fulfilled' && Array.isArray(placesRes.value)) {
+        setPlaces(
+          mergeWithCatalog(placesRes.value, []).filter(
             (p) => !deletedPlaceIdsRef.current.has(p.id)
           )
         );
       }
 
-      if (hasItems(dirRes)) {
+      if (dirRes.status === 'fulfilled' && Array.isArray(dirRes.value)) {
         const cleanDir = dirRes.value
           .filter(
             (item) =>
               item &&
               item.nombre &&
-              !LEGACY_FICTITIOUS_DIR_IDS.has(item.id) &&
               !deletedDirIdsRef.current.has(item.id)
           )
           .map(normalizeDirectoryItem);
-        if (cleanDir.length > 0) setDirectoryItems(cleanDir);
+        setDirectoryItems(cleanDir);
       }
 
-      if (hasItems(bannersRes)) setHomeBanners(bannersRes.value);
-      if (hasItems(sosRes)) setEmergencyNumbers(sosRes.value);
-      if (hasItems(transportRes)) setBusAgencies(transportRes.value);
+      if (bannersRes.status === 'fulfilled' && Array.isArray(bannersRes.value)) {
+        setHomeBanners(bannersRes.value);
+      }
+      if (sosRes.status === 'fulfilled' && Array.isArray(sosRes.value)) {
+        setEmergencyNumbers(sosRes.value);
+      }
+      if (
+        transportRes.status === 'fulfilled' &&
+        Array.isArray(transportRes.value)
+      ) {
+        setBusAgencies(transportRes.value);
+      }
 
       if (profileRes.status === 'fulfilled' && profileRes.value) {
         const prof = profileRes.value;
