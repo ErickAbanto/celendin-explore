@@ -29,13 +29,13 @@ const {
   legacyDirectoryIds,
 } = require('./seedExtras');
 
-// Longitud máxima para rutas o URLs de imágenes guardadas en la BD
-const MAX_IMAGE_URL_LENGTH = 1000;
+// Longitud máxima para imágenes subidas en base64 (data:image/...) o links guardados en MongoDB Atlas
+const MAX_IMAGE_URL_LENGTH = 800000;
 
 const app = express();
 app.set('trust proxy', 1);
 app.use(cors());
-app.use(express.json({ limit: '16kb' }));
+app.use(express.json({ limit: '5mb' }));
 
 // Carpeta pública de imágenes servidas desde el backend: http://<host>:3000/images/<archivo>.jpg
 app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
@@ -69,7 +69,12 @@ function withFullImageUrl(req, item) {
   const obj = item.toObject ? item.toObject() : { ...item };
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   if (obj.imagen && obj.imagen.startsWith('/')) {
-    obj.imagenUrl = `${baseUrl}${obj.imagen}`;
+    if (obj.imagen.startsWith('/images/')) {
+      obj.imagen = '';
+      obj.imagenUrl = '';
+    } else {
+      obj.imagenUrl = `${baseUrl}${obj.imagen}`;
+    }
   }
   return obj;
 }
@@ -180,9 +185,7 @@ app.post('/api/places', async (req, res) => {
     String(body.tiempoEstimado || horario).trim().slice(0, 80);
   const historia = String(body.historia || '').trim().slice(0, 450);
   const actividades = String(body.actividades || '').trim().slice(0, 300);
-  const imagen =
-    String(body.imagen || '/images/celendin-hero.jpg').trim().slice(0, MAX_IMAGE_URL_LENGTH) ||
-    '/images/celendin-hero.jpg';
+  const imagen = String(body.imagen || '').trim().slice(0, MAX_IMAGE_URL_LENGTH);
   const mapsQuery =
     String(
       body.mapsQuery || `${nombre}, ${ubicacion}, Celendín, Cajamarca, Perú`
@@ -280,6 +283,8 @@ app.put('/api/places/:placeId', async (req, res) => {
     updates.direccionCorta = String(body.direccionCorta || updates.ubicacion)
       .trim()
       .slice(0, 90);
+  } else if (typeof body.direccionCorta === 'string') {
+    updates.direccionCorta = body.direccionCorta.trim().slice(0, 90);
   }
   if (typeof body.categoria === 'string' && body.categoria.trim()) {
     updates.categoria = body.categoria.trim().slice(0, 30);
@@ -300,14 +305,42 @@ app.put('/api/places/:placeId', async (req, res) => {
   if (typeof body.horario === 'string') {
     updates.horario = body.horario.trim().slice(0, 80);
   }
+  if (typeof body.tiempoEstimado === 'string') {
+    updates.tiempoEstimado = body.tiempoEstimado.trim().slice(0, 80);
+  }
+  if (typeof body.actividades === 'string') {
+    updates.actividades = body.actividades.trim().slice(0, 300);
+  }
+  if (typeof body.historia === 'string') {
+    updates.historia = body.historia.trim().slice(0, 450);
+  }
   if (typeof body.desc === 'string' && body.desc.trim()) {
     updates.desc = body.desc.trim().slice(0, 450);
   }
-  if (typeof body.imagen === 'string' && body.imagen.trim()) {
+  if (typeof body.imagen === 'string') {
     updates.imagen = body.imagen.trim().slice(0, MAX_IMAGE_URL_LENGTH);
+  }
+  if (typeof body.mapEmbedUrl === 'string') {
+    updates.mapEmbedUrl = body.mapEmbedUrl.trim().slice(0, 600);
   }
   if (typeof body.mapsQuery === 'string') {
     updates.mapsQuery = body.mapsQuery.trim().slice(0, 160);
+  }
+  if (body.lat !== undefined) {
+    const latNum = Number(body.lat);
+    if (body.lat !== '' && body.lat !== null && Number.isFinite(latNum)) {
+      updates.lat = latNum;
+    } else {
+      updates.lat = undefined;
+    }
+  }
+  if (body.lng !== undefined) {
+    const lngNum = Number(body.lng);
+    if (body.lng !== '' && body.lng !== null && Number.isFinite(lngNum)) {
+      updates.lng = lngNum;
+    } else {
+      updates.lng = undefined;
+    }
   }
   if (body.tips && typeof body.tips === 'object') {
     updates.tips = {
@@ -489,10 +522,7 @@ app.post('/api/directory', async (req, res) => {
   const telefono = rawPhone.startsWith('+')
     ? rawPhone
     : `+${whatsapp}`;
-  const imagen =
-    String(body.imagen || '/images/chocolate-celendin.jpg')
-      .trim()
-      .slice(0, MAX_IMAGE_URL_LENGTH) || '/images/chocolate-celendin.jpg';
+  const imagen = String(body.imagen || '').trim().slice(0, MAX_IMAGE_URL_LENGTH);
 
   const newDirItem = {
     id: String(body.id || '').trim().slice(0, 60) || slugifyId('dir', nombre),
@@ -571,7 +601,7 @@ app.put('/api/directory/:itemId', async (req, res) => {
       ? rawPhone
       : `+${updates.whatsapp}`;
   }
-  if (typeof body.imagen === 'string' && body.imagen.trim()) {
+  if (typeof body.imagen === 'string') {
     updates.imagen = body.imagen.trim().slice(0, MAX_IMAGE_URL_LENGTH);
   }
 
@@ -932,11 +962,29 @@ app.put('/api/profile/:deviceId', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 // Sincronización única: reemplaza datos antiguos/ficticios de la BD por los datos
-// reales de Celendín. Conserva calificaciones y reseñas ya registradas.
-const SEED_VERSION = 2;
+// reales de Celendín y limpia imágenes predeterminadas (/images/...).
+const SEED_VERSION = 3;
 
 async function syncRealSeedData() {
   try {
+    // Limpia cualquier imagen predefinida (/images/...) en la BD para que solo queden las subidas por el usuario
+    await Place.updateMany(
+      { imagen: { $regex: '^/images/' } },
+      { $set: { imagen: '' } }
+    );
+    await DirectoryItem.updateMany(
+      { imagen: { $regex: '^/images/' } },
+      { $set: { imagen: '' } }
+    );
+    await Culture.updateMany(
+      { imagen: { $regex: '^/images/' } },
+      { $set: { imagen: '' } }
+    );
+    await GalleryImage.updateMany(
+      { imagen: { $regex: '^/images/' } },
+      { $set: { imagen: '' } }
+    );
+
     const meta = await AppMeta.findOne({ key: 'seed' });
     if (meta && meta.version >= SEED_VERSION) return;
 

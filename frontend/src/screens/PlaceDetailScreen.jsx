@@ -129,11 +129,24 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
       >
         {/* Cabecera de imagen limpia (sin textos ni sombras encima) */}
         <View style={[styles.heroWrap, { height: 195 + topInset }]}>
-          <Image
-            source={imageSource}
-            style={styles.heroImage}
-            resizeMode="cover"
-          />
+          {imageSource ? (
+            <Image
+              source={imageSource}
+              style={styles.heroImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.noHeroPlaceholder}>
+              <Ionicons
+                name="image-outline"
+                size={36}
+                color="rgba(255,255,255,0.55)"
+              />
+              <Text style={styles.noHeroText}>
+                {isEn ? 'No image uploaded' : 'Sin imagen subida'}
+              </Text>
+            </View>
+          )}
 
           <View style={[styles.heroTopBar, { paddingTop: topInset + 8 }]}>
             <TouchableOpacity
@@ -313,6 +326,37 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                   </Text>
                 </View>
 
+                {!!place.tiempoEstimado &&
+                  place.tiempoEstimado !== place.horario && (
+                    <View style={styles.infoRow}>
+                      <Ionicons
+                        name="hourglass-outline"
+                        size={16}
+                        color={C.primaryLight}
+                      />
+                      <Text
+                        style={[styles.infoText, { color: C.textSecondary }]}
+                      >
+                        {isEn ? 'Estimated time: ' : 'Tiempo estimado: '}
+                        {place.tiempoEstimado}
+                      </Text>
+                    </View>
+                  )}
+
+                {!!place.altitudTexto && (
+                  <View style={styles.infoRow}>
+                    <Ionicons
+                      name="trending-up-outline"
+                      size={16}
+                      color="#D97706"
+                    />
+                    <Text style={[styles.infoText, { color: C.textSecondary }]}>
+                      {isEn ? 'Altitude: ' : 'Altitud: '}
+                      {place.altitudTexto}
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.infoRow}>
                   <Ionicons
                     name="bag-handle-outline"
@@ -323,6 +367,37 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                     {place.tips?.llevar || defaultLlevar}
                   </Text>
                 </View>
+
+                {!!place.tips?.mejorHorario &&
+                  place.tips.mejorHorario !== place.horario && (
+                    <View style={styles.infoRow}>
+                      <Ionicons
+                        name="sunny-outline"
+                        size={16}
+                        color="#D97706"
+                      />
+                      <Text
+                        style={[styles.infoText, { color: C.textSecondary }]}
+                      >
+                        {isEn ? 'Best time: ' : 'Mejor horario: '}
+                        {place.tips.mejorHorario}
+                      </Text>
+                    </View>
+                  )}
+
+                {!!place.tips?.dificultad && (
+                  <View style={styles.infoRow}>
+                    <Ionicons
+                      name="walk-outline"
+                      size={16}
+                      color={C.primaryLight}
+                    />
+                    <Text style={[styles.infoText, { color: C.textSecondary }]}>
+                      {isEn ? 'Difficulty: ' : 'Dificultad: '}
+                      {place.tips.dificultad}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
           )}
@@ -602,6 +677,21 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: '100%',
     height: '100%',
+  },
+  noHeroPlaceholder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  noHeroText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontWeight: '700',
   },
   heroBottomScrim: {
     position: 'absolute',

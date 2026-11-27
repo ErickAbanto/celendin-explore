@@ -23,10 +23,10 @@ const {
   await Culture.deleteMany({});
   await GalleryImage.deleteMany({});
 
-  await Place.insertMany(places);
-  await DirectoryItem.insertMany(directory);
-  await Culture.insertMany(culture);
-  await GalleryImage.insertMany(gallery);
+  await Place.insertMany(places.map((p) => ({ ...p, imagen: '' })));
+  await DirectoryItem.insertMany(directory.map((d) => ({ ...d, imagen: '' })));
+  await Culture.insertMany(culture.map((c) => ({ ...c, imagen: '' })));
+  await GalleryImage.insertMany(gallery.map((g) => ({ ...g, imagen: '' })));
 
   await UserProfile.updateOne(
     { deviceId: defaultProfile.deviceId },

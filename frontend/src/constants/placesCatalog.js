@@ -2,60 +2,32 @@ import { Linking } from 'react-native';
 import placesFromDataJs from './placesData.json';
 import { getImageUrl } from '../services/api';
 
-const LOCAL_IMAGES = {
-  '/images/catarata-cornelio.jpg': require('../../assets/images/catarata-cornelio.jpg'),
-  '/images/celendin-hero.jpg': require('../../assets/images/celendin-hero.jpg'),
-  '/images/chocolate-celendin.jpg': require('../../assets/images/chocolate-celendin.jpg'),
-  '/images/mirador-san-isidro.jpg': require('../../assets/images/mirador-san-isidro.jpg'),
-  '/images/plaza-armas.jpg': require('../../assets/images/plaza-armas.jpg'),
-  '/images/sombrero-shilico.jpg': require('../../assets/images/sombrero-shilico.jpg'),
-};
+export const IMAGE_PRESETS = [];
 
-export const IMAGE_PRESETS = [
-  {
-    key: '/images/celendin-hero.jpg',
-    labelEs: 'Panorámica',
-    labelEn: 'Panorama',
-  },
-  {
-    key: '/images/catarata-cornelio.jpg',
-    labelEs: 'Naturaleza',
-    labelEn: 'Nature',
-  },
-  {
-    key: '/images/plaza-armas.jpg',
-    labelEs: 'Centro / Plaza',
-    labelEn: 'Main Square',
-  },
-  {
-    key: '/images/mirador-san-isidro.jpg',
-    labelEs: 'Mirador',
-    labelEn: 'Viewpoint',
-  },
-  {
-    key: '/images/sombrero-shilico.jpg',
-    labelEs: 'Artesanía',
-    labelEn: 'Crafts',
-  },
-  {
-    key: '/images/chocolate-celendin.jpg',
-    labelEs: 'Gastronomía',
-    labelEn: 'Gastronomy',
-  },
-];
+export function hasCustomUploadedImage(itemOrPath) {
+  const src = getPlaceImageSource(itemOrPath);
+  return Boolean(src && src.uri);
+}
 
 export function getPlaceImageSource(itemOrPath) {
   const path =
     typeof itemOrPath === 'string' ? itemOrPath : itemOrPath?.imagen;
 
-  if (path && LOCAL_IMAGES[path]) {
-    return LOCAL_IMAGES[path];
+  if (!path || typeof path !== 'string') return null;
+  const trimmed = path.trim();
+  if (!trimmed || trimmed.startsWith('/images/')) {
+    return null;
   }
-  const remoteUri =
-    typeof itemOrPath === 'object' && itemOrPath?.imagenUrl
-      ? itemOrPath.imagenUrl
-      : getImageUrl(path);
-  return { uri: remoteUri };
+  if (
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('file://') ||
+    trimmed.startsWith('content://') ||
+    trimmed.startsWith('blob:')
+  ) {
+    return { uri: trimmed };
+  }
+  const remoteUri = getImageUrl(trimmed);
+  return remoteUri ? { uri: remoteUri } : null;
 }
 
 export function extractIframeSrc(raw) {
@@ -64,17 +36,62 @@ export function extractIframeSrc(raw) {
   }
   const texto = raw.trim();
   const srcMatch = texto.match(/src=["']([^"']+)["']/i);
-  return srcMatch ? srcMatch[1] : texto;
+  const candidate = srcMatch ? srcMatch[1].trim() : texto;
+
+  // Si pega un iframe embed oficial de Google Maps
+  if (/google\.com\/maps\/embed/i.test(candidate) || /output=embed/i.test(candidate)) {
+    return candidate;
+  }
+
+  // Si pega un enlace de Google Maps con coordenadas @lat,lng
+  const atCoords = candidate.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (atCoords) {
+    return `https://maps.google.com/maps?q=${atCoords[1]},${atCoords[2]}&z=15&output=embed`;
+  }
+
+  // Si pega un enlace de Google Maps con ?q= o query=
+  const qMatch = candidate.match(/[?&](?:q|query|destination)=([^&]+)/i);
+  if (qMatch) {
+    return `https://maps.google.com/maps?q=${qMatch[1]}&z=15&output=embed`;
+  }
+
+  // Si pega un enlace de Google Maps /maps/place/Nombre/...
+  const placeMatch = candidate.match(/google\.[^/]+\/maps\/place\/([^/?#]+)/i);
+  if (placeMatch) {
+    return `https://maps.google.com/maps?q=${placeMatch[1]}&z=15&output=embed`;
+  }
+
+  // Si es una URL https válida (por ejemplo maps.google.com/maps?...)
+  if (/^https?:\/\//i.test(candidate)) {
+    if (/google\.[^/]+\/maps/i.test(candidate) && !candidate.includes('output=embed')) {
+      const sep = candidate.includes('?') ? '&' : '?';
+      return `${candidate}${sep}output=embed`;
+    }
+    return candidate;
+  }
+
+  // Si escribió una dirección o nombre directamente en el campo de mapa
+  return `https://maps.google.com/maps?q=${encodeURIComponent(candidate)}&z=15&output=embed`;
 }
 
 export function getGoogleMapsEmbedUrl(item) {
   const customEmbed = extractIframeSrc(item?.mapEmbedUrl);
   if (customEmbed) return customEmbed;
-  if (item?.lat && item?.lng) {
-    return `https://maps.google.com/maps?q=${item.lat},${item.lng}&z=15&output=embed`;
+  const latNum = Number(item?.lat);
+  const lngNum = Number(item?.lng);
+  if (
+    item?.lat !== '' &&
+    item?.lat != null &&
+    item?.lng !== '' &&
+    item?.lng != null &&
+    Number.isFinite(latNum) &&
+    Number.isFinite(lngNum)
+  ) {
+    return `https://maps.google.com/maps?q=${latNum},${lngNum}&z=15&output=embed`;
   }
   const query = encodeURIComponent(
-    item?.mapsQuery || `${item?.nombre || 'Celendín'}, Celendín, Cajamarca, Perú`
+    item?.mapsQuery ||
+      `${item?.nombre || 'Celendín'}, ${item?.ubicacion || 'Celendín'}, Cajamarca, Perú`
   );
   return `https://maps.google.com/maps?q=${query}&z=15&output=embed`;
 }
@@ -135,6 +152,8 @@ export function getStarIconNames(ratingValue) {
   });
 }
 
+// La base de datos es la fuente de verdad: los datos remotos reemplazan a los
+// locales. El catálogo local solo completa campos que falten (coordenadas, mapa).
 export function mergeWithCatalog(remotePlaces, currentPlaces = []) {
   if (!Array.isArray(remotePlaces) || remotePlaces.length === 0) {
     return Array.isArray(currentPlaces) && currentPlaces.length > 0
@@ -142,75 +161,41 @@ export function mergeWithCatalog(remotePlaces, currentPlaces = []) {
       : DEFAULT_PLACES_BASE;
   }
 
-  const matchedIds = new Set();
-  const matchedNames = new Set();
-
-  const baseMerged = DEFAULT_PLACES_BASE.map((baseItem) => {
-    const localCur = (Array.isArray(currentPlaces) ? currentPlaces : []).find(
-      (c) => c.id === baseItem.id
-    );
-    const match =
-      remotePlaces.find((r) => r.id && r.id === baseItem.id) ||
-      remotePlaces.find((r) => r.nombre === baseItem.nombre);
-
-    if (match?.id) matchedIds.add(match.id);
-    if (match?.nombre) matchedNames.add(match.nombre);
-
-    const hasLocalVotes = (localCur?.resenasCount ?? 0) > 0;
-
-    return {
-      ...baseItem,
-      id: baseItem.id,
-      _id: match?._id || baseItem.id,
-      resenas: hasLocalVotes ? localCur.resenas : [],
-      resenasCount: hasLocalVotes ? localCur.resenasCount : 0,
-      ratingSum: hasLocalVotes ? localCur.ratingSum : 0,
-      rating: hasLocalVotes ? localCur.rating : '0.0',
-      mapEmbedUrl: baseItem.mapEmbedUrl || match?.mapEmbedUrl || '',
-      imagenUrl: match?.imagenUrl || baseItem.imagenUrl,
-    };
-  });
-
-  DEFAULT_PLACES_BASE.forEach((b) => {
-    if (b.id) matchedIds.add(b.id);
-    if (b.nombre) matchedNames.add(b.nombre);
-  });
-
-  const extraRemote = remotePlaces
-    .filter(
-      (r) =>
-        r &&
-        r.nombre &&
-        !(r.id && matchedIds.has(r.id)) &&
-        !matchedNames.has(r.nombre)
-    )
+  return remotePlaces
+    .filter((r) => r && r.nombre)
     .map((r) => {
-      if (r.id) matchedIds.add(r.id);
-      if (r.nombre) matchedNames.add(r.nombre);
+      const id = r.id || r._id;
+      const base = DEFAULT_PLACES_BASE.find((b) => b.id === id) || {};
+      const cleanImagen =
+        typeof r.imagen === 'string' && !r.imagen.startsWith('/images/')
+          ? r.imagen
+          : '';
       return {
+        ...base,
         ...r,
-        id: r.id || r._id || `lugar-${Date.now()}`,
+        id,
+        imagen: cleanImagen,
+        imagenUrl: cleanImagen ? r.imagenUrl : '',
+        lat: r.lat ?? base.lat,
+        lng: r.lng ?? base.lng,
+        mapEmbedUrl: r.mapEmbedUrl || base.mapEmbedUrl || '',
         rating: r.rating ?? '0.0',
         ratingSum: typeof r.ratingSum === 'number' ? r.ratingSum : 0,
         resenasCount: typeof r.resenasCount === 'number' ? r.resenasCount : 0,
         resenas: Array.isArray(r.resenas) ? r.resenas : [],
-        tips: r.tips || {
-          llevar: 'Calzado cómodo, agua y protección solar.',
+        tips: {
+          llevar: 'Calzado cómodo, agua y cámara.',
           mejorHorario: r.horario || '8:00 am – 5:00 pm',
-          dificultad: 'Fácil – Moderada.',
+          dificultad: 'Fácil – Moderada',
+          ...(base.tips || {}),
+          ...(r.tips || {}),
         },
       };
     });
+}
 
-  const extraLocal = (Array.isArray(currentPlaces) ? currentPlaces : []).filter(
-    (localItem) =>
-      localItem &&
-      localItem.nombre &&
-      !(localItem.id && matchedIds.has(localItem.id)) &&
-      !matchedNames.has(localItem.nombre)
-  );
-
-  return [...baseMerged, ...extraRemote, ...extraLocal];
+export function normalizePlace(remote) {
+  return mergeWithCatalog([remote])[0];
 }
 
 export function getInitialPlacesCatalog() {

@@ -193,6 +193,7 @@ export default function LugaresScreen({ route, navigation }) {
       >
         {filteredPlaces.map((item) => {
           const saved = isSaved(item.id);
+          const imgSource = getPlaceImageSource(item);
 
           return (
             <View
@@ -203,12 +204,32 @@ export default function LugaresScreen({ route, navigation }) {
               ]}
             >
               {/* Contenedor de imagen aislado arriba (estático) */}
-              <View style={styles.cardImgBox}>
-                <Image
-                  source={getPlaceImageSource(item)}
-                  style={styles.cardImg}
-                  resizeMode="cover"
-                />
+              <View
+                style={[
+                  styles.cardImgBox,
+                  { backgroundColor: C.cardAlt || '#E5E7EB' },
+                ]}
+              >
+                {imgSource ? (
+                  <Image
+                    source={imgSource}
+                    style={styles.cardImg}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.noImagePlaceholder}>
+                    <Ionicons
+                      name="image-outline"
+                      size={30}
+                      color={C.textMuted}
+                    />
+                    <Text
+                      style={[styles.noImageText, { color: C.textMuted }]}
+                    >
+                      {isEn ? 'No image uploaded' : 'Sin imagen subida'}
+                    </Text>
+                  </View>
+                )}
                 <TouchableOpacity
                   style={styles.heartCircle}
                   activeOpacity={0.8}
@@ -399,6 +420,17 @@ const styles = StyleSheet.create({
   cardImg: {
     width: '100%',
     height: 155,
+  },
+  noImagePlaceholder: {
+    width: '100%',
+    height: 155,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  noImageText: {
+    fontSize: 11.5,
+    fontWeight: '700',
   },
   heartCircle: {
     position: 'absolute',

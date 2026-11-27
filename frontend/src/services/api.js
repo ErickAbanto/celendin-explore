@@ -1,16 +1,31 @@
-// URL pública en Render conectada a MongoDB Atlas (funciona desde cualquier red o datos móviles)
+// URL pública en Render conectada directamente a MongoDB Atlas en la nube
 const RENDER_URL = 'https://celendin-explore.onrender.com';
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || RENDER_URL;
+export const API_URL =
+  (process.env.EXPO_PUBLIC_API_URL || RENDER_URL).trim() || RENDER_URL;
 
-// Construye la URL completa HTTPS de una imagen alojada en el backend (/images/...)
+// Construye la URL completa HTTPS o Data URI de una imagen subida en la BD
 export function getImageUrl(imagenPathOrUrl) {
-  if (!imagenPathOrUrl) return `${API_URL}/images/celendin-hero.jpg`;
-  if (imagenPathOrUrl.startsWith('http://celendin-explore.onrender.com')) {
-    return imagenPathOrUrl.replace('http://', 'https://');
+  if (!imagenPathOrUrl || typeof imagenPathOrUrl !== 'string') return '';
+  const trimmed = imagenPathOrUrl.trim();
+  if (!trimmed || trimmed.startsWith('/images/')) return '';
+  if (
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('file://') ||
+    trimmed.startsWith('content://') ||
+    trimmed.startsWith('blob:')
+  ) {
+    return trimmed;
   }
-  if (imagenPathOrUrl.startsWith('http')) return imagenPathOrUrl;
-  return `${API_URL}${imagenPathOrUrl.startsWith('/') ? '' : '/'}${imagenPathOrUrl}`;
+  if (trimmed.startsWith('http://celendin-explore.onrender.com')) {
+    if (trimmed.includes('/images/')) return '';
+    return trimmed.replace('http://', 'https://');
+  }
+  if (trimmed.startsWith('https://celendin-explore.onrender.com/images/')) {
+    return '';
+  }
+  if (trimmed.startsWith('http')) return trimmed;
+  return `${API_URL}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
 }
 
 async function request(path, options = {}) {
@@ -91,6 +106,26 @@ export const addDirectoryReview = (itemId, review) =>
 
 export const getProfile = (deviceId = 'explorador-shilico') =>
   request(`/profile/${encodeURIComponent(deviceId)}`);
+
+// CRUD genérico para colecciones simples (Inicio, Emergencias, Transporte)
+function buildCrud(resource) {
+  return {
+    list: () => request(`/${resource}`),
+    create: (item) =>
+      request(`/${resource}`, { method: 'POST', body: JSON.stringify(item) }),
+    update: (id, item) =>
+      request(`/${resource}/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(item),
+      }),
+    remove: (id) =>
+      request(`/${resource}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  };
+}
+
+export const bannersApi = buildCrud('banners');
+export const emergenciesApi = buildCrud('emergencies');
+export const transportApi = buildCrud('transport');
 
 export const saveProfile = (deviceId = 'explorador-shilico', payload = {}) =>
   request(`/profile/${encodeURIComponent(deviceId)}`, {

@@ -163,7 +163,9 @@ export default function PortfolioScreen() {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       >
-        {filteredDirectory.map((item) => (
+        {filteredDirectory.map((item) => {
+          const imgSource = getPlaceImageSource(item);
+          return (
           <View
             key={item.id}
             style={[
@@ -172,12 +174,30 @@ export default function PortfolioScreen() {
             ]}
           >
             {/* Imagen 100% limpia sin etiquetas encima */}
-            <View style={styles.cardImageWrap}>
-              <Image
-                source={getPlaceImageSource(item.imagen)}
-                style={styles.cardImage}
-                resizeMode="cover"
-              />
+            <View
+              style={[
+                styles.cardImageWrap,
+                { backgroundColor: C.cardAlt || '#E5E7EB' },
+              ]}
+            >
+              {imgSource ? (
+                <Image
+                  source={imgSource}
+                  style={styles.cardImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.noImagePlaceholder}>
+                  <Ionicons
+                    name="image-outline"
+                    size={28}
+                    color={C.textMuted}
+                  />
+                  <Text style={[styles.noImageText, { color: C.textMuted }]}>
+                    {isEn ? 'No image uploaded' : 'Sin imagen subida'}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Información y descripción afuera/debajo de la imagen */}
@@ -283,7 +303,8 @@ export default function PortfolioScreen() {
               </View>
             </View>
           </View>
-        ))}
+          );
+        })}
       </ScrollView>
 
       {/* Modal de calificación */}
@@ -404,6 +425,17 @@ const styles = StyleSheet.create({
   cardImage: {
     width: '100%',
     height: 140,
+  },
+  noImagePlaceholder: {
+    width: '100%',
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  noImageText: {
+    fontSize: 11.5,
+    fontWeight: '700',
   },
   amberBadge: {
     position: 'absolute',

@@ -84,7 +84,7 @@ export default function HomeScreen({ navigation }) {
     const nextCount = diff < 750 ? secretTapRef.current.count + 1 : 1;
     if (nextCount >= 10) {
       secretTapRef.current = { count: 0, lastTap: 0 };
-      openAdminPanel('inicio');
+      openAdminPanel('places');
     } else {
       secretTapRef.current = { count: nextCount, lastTap: now };
     }
@@ -363,7 +363,9 @@ export default function HomeScreen({ navigation }) {
                   { transform: [{ translateX: savedTranslateX }] },
                 ]}
               >
-                {savedLoopItems.map((item, idx) => (
+                {savedLoopItems.map((item, idx) => {
+                  const imgSource = getPlaceImageSource(item);
+                  return (
                   <View
                     key={`${item.id}-loop-${idx}`}
                     style={[
@@ -371,11 +373,27 @@ export default function HomeScreen({ navigation }) {
                       { backgroundColor: C.card, borderColor: C.border },
                     ]}
                   >
-                    <Image
-                      source={getPlaceImageSource(item)}
-                      style={styles.savedThumbImg}
-                      resizeMode="cover"
-                    />
+                    {imgSource ? (
+                      <Image
+                        source={imgSource}
+                        style={styles.savedThumbImg}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.savedThumbImg,
+                          styles.noImgCenter,
+                          { backgroundColor: C.primarySoft },
+                        ]}
+                      >
+                        <Ionicons
+                          name="image-outline"
+                          size={22}
+                          color={C.primaryLight}
+                        />
+                      </View>
+                    )}
 
                     <View style={styles.savedCardContent}>
                       <View style={styles.savedTopMetaRow}>
@@ -409,7 +427,8 @@ export default function HomeScreen({ navigation }) {
                       </Text>
                     </View>
                   </View>
-                ))}
+                  );
+                })}
               </Animated.View>
             </View>
           </View>
@@ -445,6 +464,7 @@ export default function HomeScreen({ navigation }) {
             >
               {featuredPlaces.map((item) => {
                 const saved = isSaved(item.id);
+                const imgSource = getPlaceImageSource(item);
                 return (
                   <View
                     key={`static-card-${item.id}`}
@@ -454,12 +474,27 @@ export default function HomeScreen({ navigation }) {
                     ]}
                   >
                     {/* Contenedor de imagen aislado arriba con overflow hidden */}
-                    <View style={styles.featuredImgBox}>
-                      <Image
-                        source={getPlaceImageSource(item)}
-                        style={styles.featuredImg}
-                        resizeMode="cover"
-                      />
+                    <View
+                      style={[
+                        styles.featuredImgBox,
+                        { backgroundColor: C.cardAlt || '#E5E7EB' },
+                      ]}
+                    >
+                      {imgSource ? (
+                        <Image
+                          source={imgSource}
+                          style={styles.featuredImg}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={[styles.featuredImg, styles.noImgCenter]}>
+                          <Ionicons
+                            name="image-outline"
+                            size={26}
+                            color={C.textMuted}
+                          />
+                        </View>
+                      )}
                       <TouchableOpacity
                         style={styles.smallHeartBtn}
                         activeOpacity={0.8}
@@ -849,6 +884,10 @@ const styles = StyleSheet.create({
     height: 84,
     borderRadius: 14,
     backgroundColor: '#E5E7EB',
+  },
+  noImgCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   savedCardContent: {
     flex: 1,

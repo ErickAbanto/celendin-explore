@@ -46,7 +46,7 @@ const Place = mongoose.model(
       desc: { type: String, required: true },
       historia: { type: String, default: '' },
       actividades: { type: String, default: '' },
-      imagen: { type: String, required: true },
+      imagen: { type: String, default: '' },
       mapEmbedUrl: { type: String, default: '' },
       lat: { type: Number },
       lng: { type: Number },
@@ -76,7 +76,7 @@ const DirectoryItem = mongoose.model(
       direccion: { type: String, default: '' },
       telefono: { type: String, default: '' },
       whatsapp: { type: String, default: '' },
-      imagen: { type: String, required: true },
+      imagen: { type: String, default: '' },
       orden: { type: Number, default: 0 },
     },
     { timestamps: true }
@@ -107,7 +107,7 @@ const Culture = mongoose.model(
       categoria: { type: String, required: true },
       etiqueta: { type: String, required: true },
       desc: { type: String, required: true },
-      imagen: { type: String, required: true },
+      imagen: { type: String, default: '' },
       orden: { type: Number, default: 0 },
     },
     { timestamps: true }
@@ -121,7 +121,7 @@ const GalleryImage = mongoose.model(
       clave: { type: String, required: true },
       titulo: { type: String, required: true },
       subtitulo: { type: String, default: '' },
-      imagen: { type: String, required: true },
+      imagen: { type: String, default: '' },
       orden: { type: Number, default: 0 },
     },
     { timestamps: true }

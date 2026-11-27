@@ -9,20 +9,24 @@ import React, {
 import {
   addDirectoryReview,
   addPlaceReview,
+  bannersApi,
   createDirectoryItem,
   createPlace,
   deleteDirectoryItem,
   deletePlace,
+  emergenciesApi,
   getDirectory,
   getPlaces,
   getProfile,
   saveProfile,
+  transportApi,
   updateDirectoryItem,
   updatePlace,
 } from '../services/api';
 import {
   getInitialPlacesCatalog,
   mergeWithCatalog,
+  normalizePlace,
 } from '../constants/placesCatalog';
 
 const DEVICE_ID = 'explorador-shilico';
@@ -139,7 +143,7 @@ export const INITIAL_VERIFIED_DIRECTORY = [
     direccion: 'Jr. José Gálvez 404-A, Celendín',
     telefono: '+51976579996',
     whatsapp: '51976579996',
-    imagen: '/images/chocolate-celendin.jpg',
+    imagen: '',
   },
   {
     id: 'dir-chokosol',
@@ -155,7 +159,7 @@ export const INITIAL_VERIFIED_DIRECTORY = [
     direccion: 'Jr. Dos de Mayo 713, Celendín',
     telefono: '+51931361444',
     whatsapp: '51931361444',
-    imagen: '/images/chocolate-celendin.jpg',
+    imagen: '',
   },
   {
     id: 'dir-intimachay',
@@ -171,7 +175,7 @@ export const INITIAL_VERIFIED_DIRECTORY = [
     direccion: 'Km 3 Carretera Celendín – Cajamarca',
     telefono: '+51954366114',
     whatsapp: '51954366114',
-    imagen: '/images/celendin-hero.jpg',
+    imagen: '',
   },
   {
     id: 'dir-ecosol-toquilla',
@@ -187,7 +191,7 @@ export const INITIAL_VERIFIED_DIRECTORY = [
     direccion: 'Jr. Cáceres 820, Celendín',
     telefono: '+51949828838',
     whatsapp: '51949828838',
-    imagen: '/images/sombrero-shilico.jpg',
+    imagen: '',
   },
   {
     id: 'dir-hotel-loyers',
@@ -203,7 +207,7 @@ export const INITIAL_VERIFIED_DIRECTORY = [
     direccion: 'Jr. José Gálvez 410, Celendín',
     telefono: '+51076555210',
     whatsapp: '51995934231',
-    imagen: '/images/plaza-armas.jpg',
+    imagen: '',
   },
   {
     id: 'dir-hostal-celendin',
@@ -219,7 +223,7 @@ export const INITIAL_VERIFIED_DIRECTORY = [
     direccion: 'Jr. Unión 305, Plaza de Armas',
     telefono: '+51995934231',
     whatsapp: '51995934231',
-    imagen: '/images/mirador-san-isidro.jpg',
+    imagen: '',
   },
 ];
 
@@ -234,6 +238,36 @@ function buildSlugId(prefix, text) {
   const suffix = Date.now().toString(36).slice(-4);
   return `${prefix}-${base || 'item'}-${suffix}`;
 }
+
+// Respuesta estándar cuando la base de datos no confirma el guardado
+function dbError(e) {
+  const detail = e?.message ? ` (${e.message})` : '';
+  return {
+    ok: false,
+    error: `No se pudo guardar en la base de datos${detail}. Verifica tu conexión a internet e inténtalo de nuevo.`,
+  };
+}
+
+function normalizeDirectoryItem(item) {
+  const cleanImagen =
+    typeof item.imagen === 'string' && !item.imagen.startsWith('/images/')
+      ? item.imagen
+      : '';
+  return {
+    ...item,
+    id: item.id || item._id,
+    imagen: cleanImagen,
+    imagenUrl: cleanImagen ? item.imagenUrl : '',
+    rating: item.rating ?? '0.0',
+    ratingSum: typeof item.ratingSum === 'number' ? item.ratingSum : 0,
+    resenasCount: typeof item.resenasCount === 'number' ? item.resenasCount : 0,
+  };
+}
+
+const hasItems = (result) =>
+  result.status === 'fulfilled' &&
+  Array.isArray(result.value) &&
+  result.value.length > 0;
 
 export function SavedPlacesProvider({ children }) {
   const [places, setPlaces] = useState(() => getInitialPlacesCatalog());
@@ -259,106 +293,58 @@ export function SavedPlacesProvider({ children }) {
 
   // Estado del Panel de Administrador Oculto
   const [adminVisible, setAdminVisible] = useState(false);
-  const [adminInitialTab, setAdminInitialTab] = useState('inicio');
+  const [adminInitialTab, setAdminInitialTab] = useState('places');
 
   const deletedPlaceIdsRef = useRef(new Set());
-  const editedPlacesRef = useRef({});
   const deletedDirIdsRef = useRef(new Set());
-  const editedDirRef = useRef({});
 
-  const openAdminPanel = (tab = 'inicio') => {
-    setAdminInitialTab(tab);
+  const openAdminPanel = (tab = 'places') => {
+    const safeTab =
+      tab === 'places' || tab === 'directory' || tab === 'perfil'
+        ? tab
+        : 'places';
+    setAdminInitialTab(safeTab);
     setAdminVisible(true);
   };
 
-  const applyPlaceAdminOverrides = (list) => {
-    return list
-      .filter((item) => item && !deletedPlaceIdsRef.current.has(item.id))
-      .map((item) =>
-        editedPlacesRef.current[item.id]
-          ? { ...item, ...editedPlacesRef.current[item.id] }
-          : item
-      );
-  };
-
-  const applyDirAdminOverrides = (remoteList, currentList = []) => {
-    const cleanRemote = (Array.isArray(remoteList) ? remoteList : []).filter(
-      (item) =>
-        item &&
-        item.id &&
-        !LEGACY_FICTITIOUS_DIR_IDS.has(item.id) &&
-        !deletedDirIdsRef.current.has(item.id)
-    );
-
-    const matchedIds = new Set();
-    const baseMerged = INITIAL_VERIFIED_DIRECTORY.filter(
-      (b) => !deletedDirIdsRef.current.has(b.id)
-    ).map((baseItem) => {
-      matchedIds.add(baseItem.id);
-      const localCur = (Array.isArray(currentList) ? currentList : []).find(
-        (c) => c.id === baseItem.id
-      );
-      const hasLocalVotes = (localCur?.resenasCount ?? 0) > 0;
-      const merged = {
-        ...baseItem,
-        resenasCount: hasLocalVotes ? localCur.resenasCount : 0,
-        ratingSum: hasLocalVotes ? localCur.ratingSum : 0,
-        rating: hasLocalVotes ? localCur.rating : '0.0',
-      };
-
-      return editedDirRef.current[baseItem.id]
-        ? { ...merged, ...editedDirRef.current[baseItem.id] }
-        : merged;
-    });
-
-    const extraRemote = cleanRemote
-      .filter((r) => {
-        if (matchedIds.has(r.id)) return false;
-        matchedIds.add(r.id);
-        return true;
-      })
-      .map((r) =>
-        editedDirRef.current[r.id] ? { ...r, ...editedDirRef.current[r.id] } : r
-      );
-
-    const extraLocal = (Array.isArray(currentList) ? currentList : [])
-      .filter(
-        (item) =>
-          item &&
-          item.id &&
-          !LEGACY_FICTITIOUS_DIR_IDS.has(item.id) &&
-          !deletedDirIdsRef.current.has(item.id) &&
-          !matchedIds.has(item.id)
-      )
-      .map((item) =>
-        editedDirRef.current[item.id]
-          ? { ...item, ...editedDirRef.current[item.id] }
-          : item
-      );
-
-    return [...extraLocal, ...baseMerged, ...extraRemote];
-  };
-
+  // La base de datos (MongoDB) es la fuente de verdad de toda la información
   const syncPlaces = async () => {
     setRefreshing(true);
     try {
-      const [placesRes, dirRes, profileRes] = await Promise.allSettled([
-        getPlaces(),
-        getDirectory(),
-        getProfile(DEVICE_ID),
-      ]);
+      const [placesRes, dirRes, profileRes, bannersRes, sosRes, transportRes] =
+        await Promise.allSettled([
+          getPlaces(),
+          getDirectory(),
+          getProfile(DEVICE_ID),
+          bannersApi.list(),
+          emergenciesApi.list(),
+          transportApi.list(),
+        ]);
 
-      if (placesRes.status === 'fulfilled' && placesRes.value?.length) {
+      if (hasItems(placesRes)) {
         setPlaces((prev) =>
-          applyPlaceAdminOverrides(mergeWithCatalog(placesRes.value, prev))
+          mergeWithCatalog(placesRes.value, prev).filter(
+            (p) => !deletedPlaceIdsRef.current.has(p.id)
+          )
         );
       }
 
-      if (dirRes.status === 'fulfilled' && dirRes.value?.length) {
-        setDirectoryItems((prev) =>
-          applyDirAdminOverrides(dirRes.value, prev)
-        );
+      if (hasItems(dirRes)) {
+        const cleanDir = dirRes.value
+          .filter(
+            (item) =>
+              item &&
+              item.nombre &&
+              !LEGACY_FICTITIOUS_DIR_IDS.has(item.id) &&
+              !deletedDirIdsRef.current.has(item.id)
+          )
+          .map(normalizeDirectoryItem);
+        if (cleanDir.length > 0) setDirectoryItems(cleanDir);
       }
+
+      if (hasItems(bannersRes)) setHomeBanners(bannersRes.value);
+      if (hasItems(sosRes)) setEmergencyNumbers(sosRes.value);
+      if (hasItems(transportRes)) setBusAgencies(transportRes.value);
 
       if (profileRes.status === 'fulfilled' && profileRes.value) {
         const prof = profileRes.value;
@@ -417,66 +403,60 @@ export function SavedPlacesProvider({ children }) {
   };
 
   // ================= CRUD DE INICIO (BANNERS / ANUNCIOS) =================
-  const addHomeBanner = (input) => {
-    const titulo = String(input?.titulo || '').trim();
-    const etiqueta =
+  const buildBannerPayload = (input) => ({
+    etiqueta: (
       String(input?.etiqueta || 'DESTACADO EN INICIO').trim() ||
-      'DESTACADO EN INICIO';
-    const subtitulo = String(input?.subtitulo || '').trim();
-    const destino =
+      'DESTACADO EN INICIO'
+    ).toUpperCase(),
+    titulo: String(input?.titulo || '').trim(),
+    subtitulo: String(input?.subtitulo || '').trim(),
+    destino:
       input?.destino === 'Lugares' || input?.destino === 'Perfil / Offline'
         ? input.destino
-        : 'Directorio';
+        : 'Directorio',
+  });
 
-    if (!titulo) {
+  const addHomeBanner = async (input) => {
+    const payload = buildBannerPayload(input);
+    if (!payload.titulo) {
       return { ok: false, error: 'El título del bloque de Inicio es obligatorio.' };
     }
-
-    const newBanner = {
-      id: buildSlugId('home', titulo),
-      etiqueta: etiqueta.toUpperCase(),
-      titulo,
-      subtitulo,
-      destino,
-    };
-    setHomeBanners((prev) => [newBanner, ...prev]);
-    return { ok: true, item: newBanner };
+    try {
+      const created = await bannersApi.create({
+        ...payload,
+        id: buildSlugId('home', payload.titulo),
+      });
+      setHomeBanners((prev) => [...prev, created]);
+      return { ok: true, item: created };
+    } catch (e) {
+      return dbError(e);
+    }
   };
 
-  const editHomeBanner = (bannerId, input) => {
-    const titulo = String(input?.titulo || '').trim();
-    const etiqueta =
-      String(input?.etiqueta || 'DESTACADO EN INICIO').trim() ||
-      'DESTACADO EN INICIO';
-    const subtitulo = String(input?.subtitulo || '').trim();
-    const destino =
-      input?.destino === 'Lugares' || input?.destino === 'Perfil / Offline'
-        ? input.destino
-        : 'Directorio';
-
-    if (!titulo) {
+  const editHomeBanner = async (bannerId, input) => {
+    const payload = buildBannerPayload(input);
+    if (!payload.titulo) {
       return { ok: false, error: 'El título del bloque de Inicio es obligatorio.' };
     }
-
-    setHomeBanners((prev) =>
-      prev.map((b) =>
-        b.id === bannerId
-          ? {
-              ...b,
-              etiqueta: etiqueta.toUpperCase(),
-              titulo,
-              subtitulo,
-              destino,
-            }
-          : b
-      )
-    );
-    return { ok: true };
+    try {
+      const updated = await bannersApi.update(bannerId, payload);
+      setHomeBanners((prev) =>
+        prev.map((b) => (b.id === bannerId ? { ...b, ...updated } : b))
+      );
+      return { ok: true };
+    } catch (e) {
+      return dbError(e);
+    }
   };
 
-  const removeHomeBanner = (bannerId) => {
-    setHomeBanners((prev) => prev.filter((b) => b.id !== bannerId));
-    return { ok: true };
+  const removeHomeBanner = async (bannerId) => {
+    try {
+      await bannersApi.remove(bannerId);
+      setHomeBanners((prev) => prev.filter((b) => b.id !== bannerId));
+      return { ok: true };
+    } catch (e) {
+      return dbError(e);
+    }
   };
 
   // ================= CRUD DE LUGARES =================
@@ -493,6 +473,8 @@ export function SavedPlacesProvider({ children }) {
       };
     }
 
+    const direccionCorta =
+      String(input?.direccionCorta || ubicacion).trim() || ubicacion;
     const distanciaCorta =
       String(input?.distanciaCorta || 'Centro').trim() || 'Centro';
     const altitudTexto =
@@ -502,15 +484,27 @@ export function SavedPlacesProvider({ children }) {
     const horario =
       String(input?.horario || '8:00 am – 5:00 pm').trim() ||
       '8:00 am – 5:00 pm';
-    const imagen =
-      String(input?.imagen || '/images/celendin-hero.jpg').trim() ||
-      '/images/celendin-hero.jpg';
+    const tiempoEstimado =
+      String(input?.tiempoEstimado || '').trim() || horario;
+    const llevar =
+      String(input?.llevar || 'Calzado cómodo, agua y cámara.').trim() ||
+      'Calzado cómodo, agua y cámara.';
+    const mejorHorario =
+      String(input?.mejorHorario || horario).trim() || horario;
+    const dificultad =
+      String(input?.dificultad || 'Fácil – Moderada').trim() ||
+      'Fácil – Moderada';
+    const imagen = String(input?.imagen || '').trim();
+    const mapEmbedUrl = String(input?.mapEmbedUrl || '').trim();
+    const mapsQuery =
+      String(input?.mapsQuery || '').trim() ||
+      `${nombre}, ${ubicacion}, Celendín, Cajamarca, Perú`;
 
     const newPlace = {
       id: buildSlugId('lugar', nombre),
       nombre,
       ubicacion,
-      direccionCorta: ubicacion,
+      direccionCorta,
       distancia: `A ${distanciaCorta} de Celendín`,
       distanciaCorta,
       distanciaGrid: distanciaCorta,
@@ -524,39 +518,31 @@ export function SavedPlacesProvider({ children }) {
       etiquetaDestacado: categoria,
       mapsLabel: `Google Maps: ${nombre}`,
       horario,
-      tiempoEstimado: horario,
+      tiempoEstimado,
       tips: {
-        llevar: String(
-          input?.llevar || 'Calzado cómodo, agua y cámara.'
-        ).trim(),
-        mejorHorario: horario,
-        dificultad: 'Fácil – Moderada',
+        llevar,
+        mejorHorario,
+        dificultad,
       },
       resenas: [],
       desc,
       historia: '',
       actividades: '',
       imagen,
-      mapEmbedUrl: '',
-      mapsQuery: `${nombre}, ${ubicacion}, Celendín, Cajamarca, Perú`,
+      mapEmbedUrl,
+      mapsQuery,
       defaultSaved: false,
       esExperienciaHoy: true,
     };
 
-    setPlaces((prev) => [newPlace, ...prev]);
-
     try {
       const created = await createPlace(newPlace);
-      if (created && created.id) {
-        setPlaces((prev) =>
-          prev.map((item) =>
-            item.id === newPlace.id ? { ...newPlace, ...created } : item
-          )
-        );
-      }
-      return { ok: true, place: created || newPlace };
-    } catch {
-      return { ok: true, place: newPlace };
+      const saved = normalizePlace({ ...newPlace, ...(created || {}) });
+      setPlaces((prev) => [saved, ...prev.filter((p) => p.id !== saved.id)]);
+      syncPlaces();
+      return { ok: true, place: saved };
+    } catch (e) {
+      return dbError(e);
     }
   };
 
@@ -573,6 +559,8 @@ export function SavedPlacesProvider({ children }) {
       };
     }
 
+    const direccionCorta =
+      String(input?.direccionCorta || ubicacion).trim() || ubicacion;
     const distanciaCorta =
       String(input?.distanciaCorta || 'Centro').trim() || 'Centro';
     const altitudTexto =
@@ -582,17 +570,25 @@ export function SavedPlacesProvider({ children }) {
     const horario =
       String(input?.horario || '8:00 am – 5:00 pm').trim() ||
       '8:00 am – 5:00 pm';
-    const imagen =
-      String(input?.imagen || '/images/celendin-hero.jpg').trim() ||
-      '/images/celendin-hero.jpg';
-    const llevar = String(
-      input?.llevar || 'Calzado cómodo, agua y cámara.'
-    ).trim();
+    const tiempoEstimado = String(input?.tiempoEstimado || '').trim();
+    const imagen = String(input?.imagen || '').trim();
+    const llevar =
+      String(input?.llevar || 'Calzado cómodo, agua y cámara.').trim() ||
+      'Calzado cómodo, agua y cámara.';
+    const mejorHorario =
+      String(input?.mejorHorario || horario).trim() || horario;
+    const dificultad =
+      String(input?.dificultad || 'Fácil – Moderada').trim() ||
+      'Fácil – Moderada';
+    const mapEmbedUrl = String(input?.mapEmbedUrl || '').trim();
+    const mapsQuery =
+      String(input?.mapsQuery || '').trim() ||
+      `${nombre}, ${ubicacion}, Celendín, Cajamarca, Perú`;
 
     const patch = {
       nombre,
       ubicacion,
-      direccionCorta: ubicacion,
+      direccionCorta,
       categoria,
       categoriaFiltro: categoria,
       distanciaCorta,
@@ -601,26 +597,40 @@ export function SavedPlacesProvider({ children }) {
       altitudTexto,
       precioTexto,
       horario,
+      tiempoEstimado,
       desc,
       imagen,
+      mapEmbedUrl,
       tips: {
         llevar,
-        mejorHorario: horario,
-        dificultad: 'Fácil – Moderada',
+        mejorHorario,
+        dificultad,
       },
-      mapsQuery: `${nombre}, ${ubicacion}, Celendín, Cajamarca, Perú`,
+      mapsQuery,
     };
 
-    editedPlacesRef.current[placeId] = patch;
-    setPlaces((prev) =>
-      prev.map((item) => (item.id === placeId ? { ...item, ...patch } : item))
-    );
-
-    updatePlace(placeId, patch).catch(() => {});
-    return { ok: true };
+    try {
+      const updated = await updatePlace(placeId, patch);
+      setPlaces((prev) =>
+        prev.map((item) =>
+          item.id === placeId
+            ? normalizePlace({ ...item, ...patch, ...(updated || {}) })
+            : item
+        )
+      );
+      syncPlaces();
+      return { ok: true };
+    } catch (e) {
+      return dbError(e);
+    }
   };
 
   const removePlace = async (placeId) => {
+    try {
+      await deletePlace(placeId);
+    } catch (e) {
+      return dbError(e);
+    }
     deletedPlaceIdsRef.current.add(placeId);
     setPlaces((prev) => prev.filter((item) => item.id !== placeId));
     setSavedIds((prev) => {
@@ -629,7 +639,6 @@ export function SavedPlacesProvider({ children }) {
       persistProfilePatch({ savedPlaceIds: next });
       return next;
     });
-    deletePlace(placeId).catch(() => {});
     return { ok: true };
   };
 
@@ -706,9 +715,7 @@ export function SavedPlacesProvider({ children }) {
     const telefono = rawPhone.startsWith('+') ? rawPhone : `+${whatsapp}`;
     const rangoPrecio =
       String(input?.rangoPrecio || 'S/ 15 - S/ 40').trim() || 'S/ 15 - S/ 40';
-    const imagen =
-      String(input?.imagen || '/images/chocolate-celendin.jpg').trim() ||
-      '/images/chocolate-celendin.jpg';
+    const imagen = String(input?.imagen || '').trim();
 
     const newItem = {
       id: buildSlugId('dir', nombre),
@@ -727,18 +734,14 @@ export function SavedPlacesProvider({ children }) {
       imagen,
     };
 
-    setDirectoryItems((prev) => [newItem, ...prev]);
-
     try {
       const created = await createDirectoryItem(newItem);
-      if (created && created.id) {
-        setDirectoryItems((prev) =>
-          prev.map((d) => (d.id === newItem.id ? { ...newItem, ...created } : d))
-        );
-      }
-      return { ok: true, item: created || newItem };
-    } catch {
-      return { ok: true, item: newItem };
+      const saved = normalizeDirectoryItem({ ...newItem, ...(created || {}) });
+      setDirectoryItems((prev) => [saved, ...prev.filter((d) => d.id !== saved.id)]);
+      syncPlaces();
+      return { ok: true, item: saved };
+    } catch (e) {
+      return dbError(e);
     }
   };
 
@@ -764,9 +767,7 @@ export function SavedPlacesProvider({ children }) {
     const telefono = rawPhone.startsWith('+') ? rawPhone : `+${whatsapp}`;
     const rangoPrecio =
       String(input?.rangoPrecio || 'S/ 15 - S/ 40').trim() || 'S/ 15 - S/ 40';
-    const imagen =
-      String(input?.imagen || '/images/chocolate-celendin.jpg').trim() ||
-      '/images/chocolate-celendin.jpg';
+    const imagen = String(input?.imagen || '').trim();
 
     const patch = {
       nombre,
@@ -780,19 +781,30 @@ export function SavedPlacesProvider({ children }) {
       imagen,
     };
 
-    editedDirRef.current[itemId] = patch;
-    setDirectoryItems((prev) =>
-      prev.map((d) => (d.id === itemId ? { ...d, ...patch } : d))
-    );
-
-    updateDirectoryItem(itemId, patch).catch(() => {});
-    return { ok: true };
+    try {
+      const updated = await updateDirectoryItem(itemId, patch);
+      setDirectoryItems((prev) =>
+        prev.map((d) =>
+          d.id === itemId
+            ? normalizeDirectoryItem({ ...d, ...patch, ...(updated || {}) })
+            : d
+        )
+      );
+      syncPlaces();
+      return { ok: true };
+    } catch (e) {
+      return dbError(e);
+    }
   };
 
   const removeDirectoryItem = async (itemId) => {
+    try {
+      await deleteDirectoryItem(itemId);
+    } catch (e) {
+      return dbError(e);
+    }
     deletedDirIdsRef.current.add(itemId);
     setDirectoryItems((prev) => prev.filter((d) => d.id !== itemId));
-    deleteDirectoryItem(itemId).catch(() => {});
     return { ok: true };
   };
 
@@ -816,110 +828,116 @@ export function SavedPlacesProvider({ children }) {
   };
 
   // ================= CRUD DE PERFIL (EMERGENCIAS Y TRANSPORTE) =================
-  const addEmergencyNumber = (input) => {
-    const titulo = String(input?.titulo || '').trim();
+  const buildSosPayload = (input) => {
     const numero = String(input?.numero || '').trim();
-    const detalle = String(input?.detalle || '').trim();
-    if (!titulo || !numero) {
-      return {
-        ok: false,
-        error: 'El nombre de la institución y el teléfono son obligatorios.',
-      };
-    }
-    const tel = numero.replace(/\D/g, '') || numero;
-    const newEntry = {
-      id: buildSlugId('sos', titulo),
-      titulo,
+    return {
+      titulo: String(input?.titulo || '').trim(),
       numero,
-      tel,
-      detalle: detalle || 'Atención de emergencias en Celendín',
+      tel: numero.replace(/\D/g, '') || numero,
+      detalle:
+        String(input?.detalle || '').trim() ||
+        'Atención de emergencias en Celendín',
     };
-    setEmergencyNumbers((prev) => [newEntry, ...prev]);
-    return { ok: true, item: newEntry };
   };
 
-  const editEmergencyNumber = (id, input) => {
-    const titulo = String(input?.titulo || '').trim();
-    const numero = String(input?.numero || '').trim();
-    const detalle = String(input?.detalle || '').trim();
-    if (!titulo || !numero) {
-      return {
-        ok: false,
-        error: 'El nombre de la institución y el teléfono son obligatorios.',
-      };
+  const SOS_REQUIRED_ERROR = {
+    ok: false,
+    error: 'El nombre de la institución y el teléfono son obligatorios.',
+  };
+
+  const addEmergencyNumber = async (input) => {
+    const payload = buildSosPayload(input);
+    if (!payload.titulo || !payload.numero) return SOS_REQUIRED_ERROR;
+    try {
+      const created = await emergenciesApi.create({
+        ...payload,
+        id: buildSlugId('sos', payload.titulo),
+      });
+      setEmergencyNumbers((prev) => [...prev, created]);
+      return { ok: true, item: created };
+    } catch (e) {
+      return dbError(e);
     }
-    const tel = numero.replace(/\D/g, '') || numero;
-    setEmergencyNumbers((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              titulo,
-              numero,
-              tel,
-              detalle: detalle || item.detalle,
-            }
-          : item
-      )
-    );
-    return { ok: true };
   };
 
-  const removeEmergencyNumber = (id) => {
-    setEmergencyNumbers((prev) => prev.filter((item) => item.id !== id));
-    return { ok: true };
-  };
-
-  const addBusAgency = (input) => {
-    const empresa = String(input?.empresa || '').trim();
-    const ruta = String(input?.ruta || '').trim();
-    const terminal = String(input?.terminal || '').trim();
-    const tipo =
-      input?.tipo === 'combis' || input?.tipo === 'autos'
-        ? input.tipo
-        : 'buses';
-    if (!empresa || !ruta || !terminal) {
-      return {
-        ok: false,
-        error: 'Completa el nombre de la agencia, ruta y dirección.',
-      };
+  const editEmergencyNumber = async (id, input) => {
+    const payload = buildSosPayload(input);
+    if (!payload.titulo || !payload.numero) return SOS_REQUIRED_ERROR;
+    try {
+      const updated = await emergenciesApi.update(id, payload);
+      setEmergencyNumbers((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, ...updated } : item))
+      );
+      return { ok: true };
+    } catch (e) {
+      return dbError(e);
     }
-    const newBus = {
-      id: buildSlugId('bus', empresa),
-      tipo,
-      empresa,
-      ruta,
-      terminal,
-    };
-    setBusAgencies((prev) => [newBus, ...prev]);
-    return { ok: true, item: newBus };
   };
 
-  const editBusAgency = (id, input) => {
-    const empresa = String(input?.empresa || '').trim();
-    const ruta = String(input?.ruta || '').trim();
-    const terminal = String(input?.terminal || '').trim();
-    const tipo =
-      input?.tipo === 'combis' || input?.tipo === 'autos'
-        ? input.tipo
-        : 'buses';
-    if (!empresa || !ruta || !terminal) {
-      return {
-        ok: false,
-        error: 'Completa el nombre de la agencia, ruta y dirección.',
-      };
+  const removeEmergencyNumber = async (id) => {
+    try {
+      await emergenciesApi.remove(id);
+      setEmergencyNumbers((prev) => prev.filter((item) => item.id !== id));
+      return { ok: true };
+    } catch (e) {
+      return dbError(e);
     }
-    setBusAgencies((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, tipo, empresa, ruta, terminal } : item
-      )
-    );
-    return { ok: true };
   };
 
-  const removeBusAgency = (id) => {
-    setBusAgencies((prev) => prev.filter((item) => item.id !== id));
-    return { ok: true };
+  const buildBusPayload = (input) => ({
+    tipo:
+      input?.tipo === 'combis' || input?.tipo === 'autos' ? input.tipo : 'buses',
+    empresa: String(input?.empresa || '').trim(),
+    ruta: String(input?.ruta || '').trim(),
+    terminal: String(input?.terminal || '').trim(),
+  });
+
+  const BUS_REQUIRED_ERROR = {
+    ok: false,
+    error: 'Completa el nombre de la agencia, ruta y dirección.',
+  };
+
+  const addBusAgency = async (input) => {
+    const payload = buildBusPayload(input);
+    if (!payload.empresa || !payload.ruta || !payload.terminal) {
+      return BUS_REQUIRED_ERROR;
+    }
+    try {
+      const created = await transportApi.create({
+        ...payload,
+        id: buildSlugId('bus', payload.empresa),
+      });
+      setBusAgencies((prev) => [...prev, created]);
+      return { ok: true, item: created };
+    } catch (e) {
+      return dbError(e);
+    }
+  };
+
+  const editBusAgency = async (id, input) => {
+    const payload = buildBusPayload(input);
+    if (!payload.empresa || !payload.ruta || !payload.terminal) {
+      return BUS_REQUIRED_ERROR;
+    }
+    try {
+      const updated = await transportApi.update(id, payload);
+      setBusAgencies((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, ...updated } : item))
+      );
+      return { ok: true };
+    } catch (e) {
+      return dbError(e);
+    }
+  };
+
+  const removeBusAgency = async (id) => {
+    try {
+      await transportApi.remove(id);
+      setBusAgencies((prev) => prev.filter((item) => item.id !== id));
+      return { ok: true };
+    } catch (e) {
+      return dbError(e);
+    }
   };
 
   const savedPlaces = useMemo(

@@ -167,7 +167,9 @@ export default function ContactScreen() {
               onMomentumScrollEnd={handleSavedScroll}
               contentContainerStyle={styles.savedCarouselContent}
             >
-              {savedPlaces.map((place) => (
+              {savedPlaces.map((place) => {
+                const imgSource = getPlaceImageSource(place);
+                return (
                 <View
                   key={place.id || place.nombre}
                   style={[
@@ -179,11 +181,27 @@ export default function ContactScreen() {
                     },
                   ]}
                 >
-                  <Image
-                    source={getPlaceImageSource(place)}
-                    style={styles.savedThumb}
-                    resizeMode="cover"
-                  />
+                  {imgSource ? (
+                    <Image
+                      source={imgSource}
+                      style={styles.savedThumb}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.savedThumb,
+                        styles.savedThumbPlaceholder,
+                        { backgroundColor: C.primarySoft },
+                      ]}
+                    >
+                      <Ionicons
+                        name="image-outline"
+                        size={22}
+                        color={C.primaryLight}
+                      />
+                    </View>
+                  )}
 
                   <View style={styles.savedCenter}>
                     <View
@@ -237,7 +255,8 @@ export default function ContactScreen() {
                     />
                   </Pressable>
                 </View>
-              ))}
+                );
+              })}
             </ScrollView>
           )}
         </View>
@@ -662,6 +681,10 @@ const styles = StyleSheet.create({
     height: 68,
     borderRadius: 14,
     backgroundColor: '#E5E7EB',
+  },
+  savedThumbPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   savedCenter: {
     flex: 1,

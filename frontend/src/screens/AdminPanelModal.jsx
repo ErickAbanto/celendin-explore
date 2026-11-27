@@ -9,14 +9,20 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { WebView } from 'react-native-webview';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { getColors } from '../constants/theme';
 import {
+  buildMapIframeHtml,
+  getGoogleMapsEmbedUrl,
   getPlaceImageSource,
-  IMAGE_PRESETS,
+  openGoogleMapsLocation,
 } from '../constants/placesCatalog';
 import { useSavedPlaces } from '../context/SavedPlacesContext';
 
@@ -30,36 +36,29 @@ const KEYPAD_ROWS = [
 
 const PLACE_CATEGORIES = ['Naturaleza', 'Cultura', 'Artesanía', 'Aventura'];
 const DIR_CATEGORIES = ['Gastronomía', 'Artesanía', 'Hoteles'];
-const HOME_TARGETS = [
-  { key: 'Directorio', label: 'Directorio' },
-  { key: 'Lugares', label: 'Lugares' },
-  { key: 'Perfil / Offline', label: 'Perfil' },
-];
 const PERFIL_SECTIONS = [
   { key: 'emergencias', label: 'Emergencias' },
   { key: 'transporte', label: 'Transporte' },
   { key: 'favoritos', label: 'Favoritos' },
 ];
 
-const EMPTY_HOME_FORM = {
-  etiqueta: 'DESTACADO',
-  titulo: '',
-  subtitulo: '',
-  destino: 'Directorio',
-};
-
 const EMPTY_PLACE_FORM = {
   nombre: '',
   categoria: 'Naturaleza',
   ubicacion: '',
+  direccionCorta: '',
   distanciaCorta: 'Centro',
   altitudTexto: '2,625 m',
   precioTexto: 'Libre',
   horario: '8:00 am – 5:00 pm',
+  tiempoEstimado: '45 min',
   llevar: 'Calzado cómodo, agua y cámara.',
+  mejorHorario: '8:00 am – 5:00 pm',
+  dificultad: 'Fácil – Moderada',
   desc: '',
-  imagenPreset: '/images/celendin-hero.jpg',
-  imagenCustomUrl: '',
+  imagen: '',
+  mapEmbedUrl: '',
+  mapsQuery: '',
 };
 
 const EMPTY_DIR_FORM = {
@@ -69,8 +68,7 @@ const EMPTY_DIR_FORM = {
   direccion: '',
   rangoPrecio: 'S/ 15 - S/ 45',
   telefono: '',
-  imagenPreset: '/images/chocolate-celendin.jpg',
-  imagenCustomUrl: '',
+  imagen: '',
 };
 
 const EMPTY_SOS_FORM = {
@@ -80,24 +78,33 @@ const EMPTY_SOS_FORM = {
 };
 
 const EMPTY_BUS_FORM = {
+  tipo: 'buses',
   empresa: '',
   ruta: '',
   terminal: '',
 };
 
+const TRANSPORT_TYPES = [
+  { key: 'buses', label: 'Buses' },
+  { key: 'combis', label: 'Combis' },
+  { key: 'autos', label: 'Autos' },
+];
+
+const IMAGE_URL_REGEX = /^https?:\/\/\S+$/i;
+
 export default function AdminPanelModal() {
   const insets = useSafeAreaInsets();
+  const [uploadedFileName, setUploadedFileName] = useState('');
+  const [showLinkInput, setShowLinkInput] = useState(false);
+  const [tempLinkText, setTempLinkText] = useState('');
+
   const {
     places,
     directoryItems,
-    homeBanners,
     emergencyNumbers,
     busAgencies,
     savedPlaces,
     toggleSaved,
-    addHomeBanner,
-    editHomeBanner,
-    removeHomeBanner,
     addNewPlace,
     editPlace,
     removePlace,
@@ -118,33 +125,41 @@ export default function AdminPanelModal() {
 
   const C = getColors(darkMode);
 
-  // 4 rutas administrables: 'inicio' | 'places' | 'directory' | 'perfil'
-  const [activeTab, setActiveTab] = useState('inicio');
+  // 3 rutas administrables: 'places' | 'directory' | 'perfil'
+  const [activeTab, setActiveTab] = useState('places');
   const [perfilSubTab, setPerfilSubTab] = useState('emergencias'); // 'emergencias' | 'transporte' | 'favoritos'
   const [mode, setMode] = useState('list'); // 'list' | 'view' | 'form'
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
+  const [showPin, setShowPin] = useState(false);
   const [pinError, setPinError] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [viewingItem, setViewingItem] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [homeForm, setHomeForm] = useState(EMPTY_HOME_FORM);
   const [placeForm, setPlaceForm] = useState(EMPTY_PLACE_FORM);
   const [dirForm, setDirForm] = useState(EMPTY_DIR_FORM);
   const [sosForm, setSosForm] = useState(EMPTY_SOS_FORM);
   const [busForm, setBusForm] = useState(EMPTY_BUS_FORM);
 
   const [formError, setFormError] = useState('');
+  const [listError, setListError] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (adminVisible) {
       setIsUnlocked(false);
       setPinInput('');
+      setShowPin(false);
       setPinError('');
-      setActiveTab(adminInitialTab || 'inicio');
+      const initial =
+        adminInitialTab === 'places' ||
+        adminInitialTab === 'directory' ||
+        adminInitialTab === 'perfil'
+          ? adminInitialTab
+          : 'places';
+      setActiveTab(initial);
       setPerfilSubTab('emergencias');
       setMode('list');
       setEditingId(null);
@@ -181,9 +196,8 @@ export default function AdminPanelModal() {
     }
   };
 
-  // Lista activa según la ruta seleccionada (Inicio, Lugares, Directorio, Perfil)
+  // Lista activa según la ruta seleccionada (Lugares, Directorio, Perfil)
   const currentSourceList = useMemo(() => {
-    if (activeTab === 'inicio') return homeBanners;
     if (activeTab === 'places') return places;
     if (activeTab === 'directory') return directoryItems;
     if (activeTab === 'perfil') {
@@ -195,7 +209,6 @@ export default function AdminPanelModal() {
   }, [
     activeTab,
     perfilSubTab,
-    homeBanners,
     places,
     directoryItems,
     emergencyNumbers,
@@ -214,6 +227,7 @@ export default function AdminPanelModal() {
         item.categoria,
         item.etiqueta,
         item.ubicacion,
+        item.direccionCorta,
         item.direccion,
         item.ruta,
         item.terminal,
@@ -237,9 +251,10 @@ export default function AdminPanelModal() {
   const handleOpenCreate = () => {
     setEditingId(null);
     setFormError('');
-    if (activeTab === 'inicio') {
-      setHomeForm(EMPTY_HOME_FORM);
-    } else if (activeTab === 'places') {
+    setUploadedFileName('');
+    setShowLinkInput(false);
+    setTempLinkText('');
+    if (activeTab === 'places') {
       setPlaceForm(EMPTY_PLACE_FORM);
     } else if (activeTab === 'directory') {
       setDirForm(EMPTY_DIR_FORM);
@@ -257,32 +272,37 @@ export default function AdminPanelModal() {
   const handleOpenEdit = (item) => {
     setEditingId(item.id);
     setFormError('');
+    setUploadedFileName('');
+    const existingImg = String(item.imagen || '').trim();
+    const isExistingUrl = IMAGE_URL_REGEX.test(existingImg);
+    setShowLinkInput(isExistingUrl);
+    setTempLinkText(isExistingUrl ? existingImg : '');
 
-    if (activeTab === 'inicio') {
-      setHomeForm({
-        etiqueta: item.etiqueta || 'DESTACADO',
-        titulo: item.titulo || '',
-        subtitulo: item.subtitulo || '',
-        destino: item.destino || 'Directorio',
-      });
-    } else if (activeTab === 'places' || (activeTab === 'perfil' && perfilSubTab === 'favoritos')) {
-      const isPreset = IMAGE_PRESETS.some((p) => p.key === item.imagen);
+    if (
+      activeTab === 'places' ||
+      (activeTab === 'perfil' && perfilSubTab === 'favoritos')
+    ) {
       if (activeTab === 'perfil') setActiveTab('places');
       setPlaceForm({
         nombre: item.nombre || '',
         categoria: item.categoria || 'Naturaleza',
-        ubicacion: item.direccionCorta || item.ubicacion || '',
+        ubicacion: item.ubicacion || item.direccionCorta || '',
+        direccionCorta: item.direccionCorta || item.ubicacion || '',
         distanciaCorta: item.distanciaCorta || 'Centro',
         altitudTexto: item.altitudTexto || '2,625 m',
         precioTexto: item.precioTexto || 'Libre',
         horario: item.horario || '8:00 am – 5:00 pm',
+        tiempoEstimado: item.tiempoEstimado || item.horario || '45 min',
         llevar: item.tips?.llevar || 'Calzado cómodo, agua y cámara.',
+        mejorHorario:
+          item.tips?.mejorHorario || item.horario || '8:00 am – 5:00 pm',
+        dificultad: item.tips?.dificultad || 'Fácil – Moderada',
         desc: item.desc || '',
-        imagenPreset: isPreset ? item.imagen : '/images/celendin-hero.jpg',
-        imagenCustomUrl: isPreset ? '' : item.imagen || '',
+        imagen: item.imagen || '',
+        mapEmbedUrl: item.mapEmbedUrl || '',
+        mapsQuery: item.mapsQuery || '',
       });
     } else if (activeTab === 'directory') {
-      const isPreset = IMAGE_PRESETS.some((p) => p.key === item.imagen);
       setDirForm({
         nombre: item.nombre || '',
         categoria: item.categoria || 'Gastronomía',
@@ -290,8 +310,7 @@ export default function AdminPanelModal() {
         direccion: item.direccion || '',
         rangoPrecio: item.rangoPrecio || 'S/ 15 - S/ 45',
         telefono: item.telefono || '',
-        imagenPreset: isPreset ? item.imagen : '/images/chocolate-celendin.jpg',
-        imagenCustomUrl: isPreset ? '' : item.imagen || '',
+        imagen: item.imagen || '',
       });
     } else if (activeTab === 'perfil') {
       if (perfilSubTab === 'emergencias') {
@@ -302,6 +321,7 @@ export default function AdminPanelModal() {
         });
       } else if (perfilSubTab === 'transporte') {
         setBusForm({
+          tipo: item.tipo || 'buses',
           empresa: item.empresa || '',
           ruta: item.ruta || '',
           terminal: item.terminal || '',
@@ -311,44 +331,64 @@ export default function AdminPanelModal() {
     setMode('form');
   };
 
-  // Guardar (Agregar o Editar en cualquiera de las 4 rutas)
+  // Guardar (Agregar o Editar en cualquiera de las 3 rutas) directamente en la BD
   const handleSaveForm = async () => {
     if (saving) return;
-    setSaving(true);
     setFormError('');
 
-    let res = { ok: true };
+    const activeImageVal =
+      activeTab === 'places'
+        ? (placeForm.imagen || '').trim()
+        : activeTab === 'directory'
+        ? (dirForm.imagen || '').trim()
+        : '';
 
-    if (activeTab === 'inicio') {
-      res = editingId
-        ? editHomeBanner(editingId, homeForm)
-        : addHomeBanner(homeForm);
-    } else if (activeTab === 'places') {
-      const imagen =
-        placeForm.imagenCustomUrl.trim() || placeForm.imagenPreset;
-      const payload = { ...placeForm, imagen };
-      res = editingId
-        ? await editPlace(editingId, payload)
-        : await addNewPlace(payload);
-    } else if (activeTab === 'directory') {
-      const imagen = dirForm.imagenCustomUrl.trim() || dirForm.imagenPreset;
-      const payload = { ...dirForm, imagen };
-      res = editingId
-        ? await editDirectoryItem(editingId, payload)
-        : await addNewDirectoryItem(payload);
-    } else if (activeTab === 'perfil') {
-      if (perfilSubTab === 'emergencias') {
-        res = editingId
-          ? editEmergencyNumber(editingId, sosForm)
-          : addEmergencyNumber(sosForm);
-      } else if (perfilSubTab === 'transporte') {
-        res = editingId
-          ? editBusAgency(editingId, busForm)
-          : addBusAgency(busForm);
-      }
+    if (
+      activeImageVal &&
+      !activeImageVal.startsWith('data:image/') &&
+      !IMAGE_URL_REGEX.test(activeImageVal)
+    ) {
+      setFormError(
+        'El link de la imagen debe empezar con http:// o https://, o sube un archivo desde tu dispositivo.'
+      );
+      return;
     }
 
-    setSaving(false);
+    setSaving(true);
+    let res = { ok: true };
+
+    try {
+      if (activeTab === 'places') {
+        const payload = {
+          ...placeForm,
+          imagen: activeImageVal,
+        };
+        res = editingId
+          ? await editPlace(editingId, payload)
+          : await addNewPlace(payload);
+      } else if (activeTab === 'directory') {
+        const payload = {
+          ...dirForm,
+          imagen: activeImageVal,
+        };
+        res = editingId
+          ? await editDirectoryItem(editingId, payload)
+          : await addNewDirectoryItem(payload);
+      } else if (activeTab === 'perfil') {
+        if (perfilSubTab === 'emergencias') {
+          res = editingId
+            ? await editEmergencyNumber(editingId, sosForm)
+            : await addEmergencyNumber(sosForm);
+        } else if (perfilSubTab === 'transporte') {
+          res = editingId
+            ? await editBusAgency(editingId, busForm)
+            : await addBusAgency(busForm);
+        }
+      }
+    } finally {
+      setSaving(false);
+    }
+
     if (!res?.ok) {
       setFormError(res?.error || 'Completa los campos obligatorios.');
       return;
@@ -358,25 +398,335 @@ export default function AdminPanelModal() {
     setEditingId(null);
   };
 
-  // Eliminar en cualquiera de las 4 rutas
+  // Abre el selector real de imágenes en Teléfono (Expo Go Android/iOS) o PC (Web)
+  const handlePickImageFromDevice = async (setForm) => {
+    setFormError('');
+
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new window.Image();
+          img.onload = () => {
+            const MAX_W = 680;
+            const MAX_H = 440;
+            let w = img.width || MAX_W;
+            let h = img.height || MAX_H;
+            if (w > MAX_W) {
+              h = Math.round(h * (MAX_W / w));
+              w = MAX_W;
+            }
+            if (h > MAX_H) {
+              w = Math.round(w * (MAX_H / h));
+              h = MAX_H;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.45);
+            setUploadedFileName(file.name || 'imagen-subida.jpg');
+            setShowLinkInput(false);
+            setTempLinkText('');
+            setForm((p) => ({ ...p, imagen: dataUrl }));
+          };
+          img.onerror = () => {
+            setUploadedFileName(file.name || 'imagen-subida.jpg');
+            setForm((p) => ({ ...p, imagen: ev.target.result }));
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+      return;
+    }
+
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm && perm.granted === false) {
+        setFormError(
+          'Permite el acceso a tus fotos/galería para poder subir la imagen.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [16, 10],
+        quality: 0.35,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        let dataUrl = '';
+
+        // Redimensiona y optimiza la foto (~25-40 KB) para no saturar MongoDB Atlas Free Tier
+        try {
+          const manipulated = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [{ resize: { width: 680 } }],
+            {
+              compress: 0.42,
+              format: ImageManipulator.SaveFormat.JPEG,
+              base64: true,
+            }
+          );
+          if (manipulated?.base64) {
+            dataUrl = `data:image/jpeg;base64,${manipulated.base64}`;
+          }
+        } catch {
+          // Si falla el redimensionador, usa el base64 comprimido de ImagePicker
+        }
+
+        if (!dataUrl) {
+          const mime = asset.mimeType || 'image/jpeg';
+          dataUrl = asset.base64
+            ? `data:${mime};base64,${asset.base64}`
+            : asset.uri;
+        }
+
+        setUploadedFileName(asset.fileName || 'foto-galeria.jpg');
+        setShowLinkInput(false);
+        setTempLinkText('');
+        setForm((p) => ({ ...p, imagen: dataUrl }));
+      }
+    } catch (err) {
+      setFormError(
+        `No se pudo abrir la galería: ${err?.message || 'intenta de nuevo'}`
+      );
+    }
+  };
+
+  // 1) Botón real para subir imagen desde Teléfono o PC
+  // 2) Al piecito: Botón para agregar Link (URL) de imagen de referencia / portada
+  const renderUploadImageButton = (form, setForm) => {
+    const rawImg = (form.imagen || '').trim();
+    const isUploadedFile =
+      rawImg.startsWith('data:image/') ||
+      rawImg.startsWith('file://') ||
+      rawImg.startsWith('content://');
+    const isUrlImage = !isUploadedFile && IMAGE_URL_REGEX.test(rawImg);
+    const hasValidPreview = Boolean(
+      rawImg &&
+        (isUploadedFile || isUrlImage) &&
+        getPlaceImageSource(rawImg)
+    );
+
+    const handleApplyImageLink = () => {
+      const cleanUrl = tempLinkText.trim();
+      if (!cleanUrl) {
+        setFormError('Pega un link de imagen antes de aplicar.');
+        return;
+      }
+      if (!IMAGE_URL_REGEX.test(cleanUrl)) {
+        setFormError('El link de la imagen debe empezar con http:// o https://');
+        return;
+      }
+      setFormError('');
+      setUploadedFileName('');
+      setForm((p) => ({ ...p, imagen: cleanUrl }));
+    };
+
+    return (
+      <View style={styles.uploadSectionWrap}>
+        <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+          Imagen de referencia / portada (Se guarda en MongoDB Atlas)
+        </Text>
+
+        {/* BOTÓN 1: Subir imagen desde Teléfono o PC */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={[
+            styles.uploadDeviceBtn,
+            {
+              backgroundColor: C.primarySoft,
+              borderColor: C.primaryLight,
+            },
+          ]}
+          onPress={() => handlePickImageFromDevice(setForm)}
+        >
+          <View style={styles.uploadIconCircle}>
+            <Ionicons name="cloud-upload-outline" size={22} color="#FFFFFF" />
+          </View>
+          <View style={styles.uploadBtnTextCol}>
+            <Text style={[styles.uploadBtnTitle, { color: C.text }]}>
+              {isUploadedFile
+                ? 'Cambiar imagen desde Teléfono o PC'
+                : 'Subir imagen desde Teléfono o PC'}
+            </Text>
+            <Text style={[styles.uploadBtnSub, { color: C.textSecondary }]}>
+              {isUploadedFile && uploadedFileName
+                ? `Archivo cargado: ${uploadedFileName}`
+                : 'Toca aquí para abrir la galería de fotos o archivos'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* BOTÓN 2 (Al piecito): Botón para agregar Link de imagen de referencia */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={[
+            styles.linkToggleBtn,
+            {
+              backgroundColor: showLinkInput || isUrlImage ? C.primarySoft : C.card,
+              borderColor: showLinkInput || isUrlImage ? C.primaryLight : C.border,
+            },
+          ]}
+          onPress={() => {
+            setFormError('');
+            if (!showLinkInput && isUrlImage) {
+              setTempLinkText(rawImg);
+            }
+            setShowLinkInput((prev) => !prev);
+          }}
+        >
+          <View
+            style={[
+              styles.linkIconCircle,
+              {
+                backgroundColor:
+                  showLinkInput || isUrlImage ? '#0F5C41' : C.cardAlt,
+              },
+            ]}
+          >
+            <Ionicons
+              name="link-outline"
+              size={20}
+              color={showLinkInput || isUrlImage ? '#FFFFFF' : C.primaryLight}
+            />
+          </View>
+          <View style={styles.uploadBtnTextCol}>
+            <Text style={[styles.uploadBtnTitle, { color: C.text }]}>
+              {isUrlImage
+                ? 'Cambiar Link de imagen de referencia / portada'
+                : 'Subir con Link de imagen de referencia / portada'}
+            </Text>
+            <Text style={[styles.uploadBtnSub, { color: C.textSecondary }]}>
+              {isUrlImage
+                ? rawImg
+                : 'Toca aquí para pegar un enlace https:// de la imagen'}
+            </Text>
+          </View>
+          <Ionicons
+            name={showLinkInput ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={C.textSecondary}
+          />
+        </TouchableOpacity>
+
+        {/* Caja desplegable al tocar el botón de Link */}
+        {showLinkInput && (
+          <View
+            style={[
+              styles.linkInputBox,
+              { backgroundColor: C.cardAlt, borderColor: C.border },
+            ]}
+          >
+            <Text style={[styles.linkBoxLabel, { color: C.textSecondary }]}>
+              Enlace (URL) de la imagen de portada:
+            </Text>
+            <View style={styles.linkInputRow}>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  styles.linkFlexInput,
+                  {
+                    backgroundColor: C.card,
+                    borderColor: C.border,
+                    color: C.text,
+                  },
+                ]}
+                placeholder="https://ejemplo.com/foto-celendin.jpg"
+                placeholderTextColor={C.textMuted}
+                value={tempLinkText}
+                onChangeText={(t) => {
+                  setTempLinkText(t);
+                  const clean = t.trim();
+                  if (IMAGE_URL_REGEX.test(clean)) {
+                    setUploadedFileName('');
+                    setForm((p) => ({ ...p, imagen: clean }));
+                  } else if (!clean && !isUploadedFile) {
+                    setForm((p) => ({ ...p, imagen: '' }));
+                  }
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.applyLinkBtn}
+                onPress={handleApplyImageLink}
+              >
+                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+                <Text style={styles.applyLinkBtnText}>Usar Link</Text>
+              </TouchableOpacity>
+            </View>
+            {tempLinkText.trim().length > 0 &&
+              !IMAGE_URL_REGEX.test(tempLinkText.trim()) && (
+                <Text style={styles.urlInvalidText}>
+                  El link debe empezar con http:// o https://
+                </Text>
+              )}
+          </View>
+        )}
+
+        {hasValidPreview && (
+          <View style={styles.uploadedPreviewWrap}>
+            <Image
+              source={getPlaceImageSource(rawImg)}
+              style={[styles.urlPreview, { borderColor: C.border }]}
+              resizeMode="cover"
+            />
+            <Pressable
+              style={styles.removeUploadedImgBtn}
+              onPress={() => {
+                setUploadedFileName('');
+                setTempLinkText('');
+                setForm((p) => ({ ...p, imagen: '' }));
+              }}
+            >
+              <Ionicons name="trash-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.removeUploadedImgText}>Quitar imagen</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Eliminar en cualquiera de las 3 rutas (también en la BD)
   const handleConfirmDelete = async (id) => {
-    if (activeTab === 'inicio') {
-      removeHomeBanner(id);
-    } else if (activeTab === 'places') {
-      await removePlace(id);
+    setListError('');
+    let res = { ok: true };
+    if (activeTab === 'places') {
+      res = await removePlace(id);
     } else if (activeTab === 'directory') {
-      await removeDirectoryItem(id);
+      res = await removeDirectoryItem(id);
     } else if (activeTab === 'perfil') {
       if (perfilSubTab === 'emergencias') {
-        removeEmergencyNumber(id);
+        res = await removeEmergencyNumber(id);
       } else if (perfilSubTab === 'transporte') {
-        removeBusAgency(id);
+        res = await removeBusAgency(id);
       } else if (perfilSubTab === 'favoritos') {
         toggleSaved(id);
       }
     }
 
     setConfirmDeleteId(null);
+    if (!res?.ok) {
+      setListError(res?.error || 'No se pudo eliminar el registro.');
+      return;
+    }
     if (viewingItem?.id === id) {
       setViewingItem(null);
       setMode('list');
@@ -386,13 +736,34 @@ export default function AdminPanelModal() {
   const topPad = Math.max(insets.top, Platform.OS === 'android' ? 24 : 16);
 
   const ROUTE_TABS = [
-    { key: 'inicio', label: 'Inicio', icon: 'compass-outline' },
     { key: 'places', label: 'Lugares', icon: 'location-outline' },
     { key: 'directory', label: 'Directorio', icon: 'restaurant-outline' },
     { key: 'perfil', label: 'Perfil', icon: 'person-outline' },
   ];
 
   const showAddButton = !(activeTab === 'perfil' && perfilSubTab === 'favoritos');
+
+  const placeMapPreviewUrl = useMemo(() => {
+    if (activeTab !== 'places') return null;
+    const hasMapData =
+      placeForm.mapEmbedUrl?.trim() ||
+      placeForm.mapsQuery?.trim() ||
+      placeForm.nombre?.trim() ||
+      placeForm.ubicacion?.trim();
+    if (!hasMapData) return null;
+    return getGoogleMapsEmbedUrl({
+      nombre: placeForm.nombre || 'Celendín',
+      ubicacion: placeForm.ubicacion || 'Celendín',
+      mapEmbedUrl: placeForm.mapEmbedUrl,
+      mapsQuery: placeForm.mapsQuery,
+    });
+  }, [
+    activeTab,
+    placeForm.mapEmbedUrl,
+    placeForm.mapsQuery,
+    placeForm.nombre,
+    placeForm.ubicacion,
+  ]);
 
   return (
     <Modal
@@ -489,9 +860,31 @@ export default function AdminPanelModal() {
                   { backgroundColor: C.cardAlt, borderColor: C.border },
                 ]}
               >
-                <Text style={[styles.pinDotsText, { color: C.text }]}>
-                  {pinInput ? '•'.repeat(pinInput.length) : ''}
+                <Text
+                  style={[
+                    showPin ? styles.pinNumbersText : styles.pinDotsText,
+                    { color: C.text },
+                  ]}
+                >
+                  {pinInput
+                    ? showPin
+                      ? pinInput
+                      : '•'.repeat(pinInput.length)
+                    : ''}
                 </Text>
+
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  style={styles.pinEyeBtn}
+                  onPress={() => setShowPin((prev) => !prev)}
+                  hitSlop={10}
+                >
+                  <Ionicons
+                    name={showPin ? 'eye-off-outline' : 'eye-outline'}
+                    size={22}
+                    color={C.textSecondary}
+                  />
+                </TouchableOpacity>
               </View>
 
               {!!pinError && (
@@ -631,6 +1024,12 @@ export default function AdminPanelModal() {
               )}
             </View>
 
+            {!!listError && (
+              <Text style={[styles.formErrorText, styles.listErrorText]}>
+                {listError}
+              </Text>
+            )}
+
             <ScrollView
               style={styles.listScroll}
               contentContainerStyle={styles.listContent}
@@ -652,15 +1051,11 @@ export default function AdminPanelModal() {
                     ? 'Emergencia'
                     : 'Transporte');
                 const displaySub =
-                  activeTab === 'inicio'
-                    ? `${item.subtitulo || 'Banner en Inicio'} • Ir a: ${
-                        item.destino
-                      }`
-                    : activeTab === 'places' ||
-                      (activeTab === 'perfil' && perfilSubTab === 'favoritos')
+                  activeTab === 'places' ||
+                  (activeTab === 'perfil' && perfilSubTab === 'favoritos')
                     ? `${item.direccionCorta || item.ubicacion} • ${
                         item.distanciaCorta || 'Centro'
-                      }`
+                      } • ${item.precioTexto || 'Libre'}`
                     : activeTab === 'directory'
                     ? `${item.direccion} • ${item.telefono}`
                     : perfilSubTab === 'emergencias'
@@ -676,7 +1071,7 @@ export default function AdminPanelModal() {
                     ]}
                   >
                     <View style={styles.itemTopRow}>
-                      {hasImage ? (
+                      {hasImage && getPlaceImageSource(item) ? (
                         <Image
                           source={getPlaceImageSource(item)}
                           style={styles.itemThumb}
@@ -691,8 +1086,8 @@ export default function AdminPanelModal() {
                         >
                           <Ionicons
                             name={
-                              activeTab === 'inicio'
-                                ? 'megaphone-outline'
+                              hasImage
+                                ? 'image-outline'
                                 : perfilSubTab === 'emergencias'
                                 ? 'call-outline'
                                 : 'bus-outline'
@@ -851,6 +1246,12 @@ export default function AdminPanelModal() {
               </Pressable>
             </View>
 
+            {!!listError && (
+              <Text style={[styles.formErrorText, styles.listErrorText]}>
+                {listError}
+              </Text>
+            )}
+
             <ScrollView
               style={styles.listScroll}
               contentContainerStyle={styles.listContent}
@@ -861,7 +1262,7 @@ export default function AdminPanelModal() {
                   { backgroundColor: C.card, borderColor: C.border },
                 ]}
               >
-                {viewingItem.imagen && (
+                {getPlaceImageSource(viewingItem) && (
                   <Image
                     source={getPlaceImageSource(viewingItem)}
                     style={styles.viewHeroImage}
@@ -876,12 +1277,42 @@ export default function AdminPanelModal() {
                       viewingItem.empresa}
                   </Text>
 
+                  {viewingItem.tips && (
+                    <View style={styles.viewFieldRow}>
+                      <Text
+                        style={[styles.viewFieldLabel, { color: C.textMuted }]}
+                      >
+                        RECOMENDACIONES / QUÉ LLEVAR:
+                      </Text>
+                      <Text
+                        style={[styles.viewFieldValue, { color: C.text }]}
+                      >
+                        {[
+                          viewingItem.tips.llevar &&
+                            `Llevar: ${viewingItem.tips.llevar}`,
+                          viewingItem.tips.mejorHorario &&
+                            `Mejor horario: ${viewingItem.tips.mejorHorario}`,
+                          viewingItem.tips.dificultad &&
+                            `Dificultad: ${viewingItem.tips.dificultad}`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </Text>
+                    </View>
+                  )}
+
                   {Object.entries(viewingItem)
                     .filter(
                       ([k, v]) =>
-                        !['id', '_id', 'resenas', 'tips', 'imagen', 'imagenUrl', 'mapEmbedUrl'].includes(
-                          k
-                        ) &&
+                        ![
+                          'id',
+                          '_id',
+                          'resenas',
+                          'tips',
+                          'imagen',
+                          'imagenUrl',
+                          'mapEmbedUrl',
+                        ].includes(k) &&
                         v !== '' &&
                         v != null
                     )
@@ -899,13 +1330,51 @@ export default function AdminPanelModal() {
                         </Text>
                       </View>
                     ))}
+
+                  {(activeTab === 'places' ||
+                    (activeTab === 'perfil' &&
+                      perfilSubTab === 'favoritos')) && (
+                    <View style={styles.mapPreviewSection}>
+                      <Text
+                        style={[styles.viewFieldLabel, { color: C.textMuted }]}
+                      >
+                        UBICACIÓN EN EL MAPA:
+                      </Text>
+                      <View
+                        style={[
+                          styles.mapFrameWrap,
+                          { borderColor: C.border, backgroundColor: C.cardAlt },
+                        ]}
+                      >
+                        {Platform.OS === 'web' ? (
+                          <iframe
+                            src={getGoogleMapsEmbedUrl(viewingItem)}
+                            style={{ width: '100%', height: '100%', border: 0 }}
+                            allowFullScreen
+                            loading="lazy"
+                          />
+                        ) : (
+                          <WebView
+                            source={{
+                              html: buildMapIframeHtml(
+                                getGoogleMapsEmbedUrl(viewingItem)
+                              ),
+                            }}
+                            style={styles.mapWebView}
+                            javaScriptEnabled
+                            domStorageEnabled
+                          />
+                        )}
+                      </View>
+                    </View>
+                  )}
                 </View>
               </View>
             </ScrollView>
           </View>
         )}
 
-        {/* ================= MODO 3: FORMULARIO (AGREGAR / EDITAR EN LAS 4 RUTAS) ================= */}
+        {/* ================= MODO 3: FORMULARIO (AGREGAR / EDITAR EN LAS 3 RUTAS) ================= */}
         {isUnlocked && mode === 'form' && (
           <View style={styles.body}>
             <View
@@ -930,111 +1399,32 @@ export default function AdminPanelModal() {
               contentContainerStyle={styles.formScrollContent}
               keyboardShouldPersistTaps="handled"
             >
-              {/* FORMULARIO RUTA 1: INICIO */}
-              {activeTab === 'inicio' && (
-                <>
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Etiqueta superior
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.textInput,
-                      {
-                        backgroundColor: C.card,
-                        borderColor: C.border,
-                        color: C.text,
-                      },
-                    ]}
-                    placeholder="Ej. DIRECTORIO OFICIAL / TRADICIÓN"
-                    placeholderTextColor={C.textMuted}
-                    value={homeForm.etiqueta}
-                    onChangeText={(t) =>
-                      setHomeForm((p) => ({ ...p, etiqueta: t }))
-                    }
-                  />
-
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Título en Inicio *
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.textInput,
-                      {
-                        backgroundColor: C.card,
-                        borderColor: C.border,
-                        color: C.text,
-                      },
-                    ]}
-                    placeholder="Ej. Feria Dominical del Sombrero"
-                    placeholderTextColor={C.textMuted}
-                    value={homeForm.titulo}
-                    onChangeText={(t) =>
-                      setHomeForm((p) => ({ ...p, titulo: t }))
-                    }
-                  />
-
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Subtítulo / Descripción
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.textInput,
-                      {
-                        backgroundColor: C.card,
-                        borderColor: C.border,
-                        color: C.text,
-                      },
-                    ]}
-                    placeholder="Ej. Domingos desde las 6:30 am en Jr. Dos de Mayo"
-                    placeholderTextColor={C.textMuted}
-                    value={homeForm.subtitulo}
-                    onChangeText={(t) =>
-                      setHomeForm((p) => ({ ...p, subtitulo: t }))
-                    }
-                  />
-
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Ruta de destino al tocar
-                  </Text>
-                  <View style={styles.chipsRow}>
-                    {HOME_TARGETS.map((t) => {
-                      const active = homeForm.destino === t.key;
-                      return (
-                        <Pressable
-                          key={t.key}
-                          style={[
-                            styles.catChip,
-                            active
-                              ? styles.catChipActive
-                              : {
-                                  backgroundColor: C.card,
-                                  borderColor: C.border,
-                                },
-                          ]}
-                          onPress={() =>
-                            setHomeForm((p) => ({ ...p, destino: t.key }))
-                          }
-                        >
-                          <Text
-                            style={[
-                              styles.catChipText,
-                              { color: active ? '#FFFFFF' : C.text },
-                            ]}
-                          >
-                            {t.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </>
-              )}
-
-              {/* FORMULARIO RUTA 2: LUGARES */}
+              {/* FORMULARIO RUTA 1: LUGARES TURÍSTICOS (CON DETALLES Y MAPA) */}
               {activeTab === 'places' && (
                 <>
+                  <View
+                    style={[
+                      styles.formSectionHeader,
+                      { backgroundColor: C.primarySoft },
+                    ]}
+                  >
+                    <Ionicons
+                      name="information-circle-outline"
+                      size={16}
+                      color={C.primaryLight}
+                    />
+                    <Text
+                      style={[
+                        styles.formSectionTitle,
+                        { color: C.primaryLight },
+                      ]}
+                    >
+                      1. Información General del Lugar
+                    </Text>
+                  </View>
+
                   <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Nombre del lugar *
+                    Nombre del lugar turístico *
                   </Text>
                   <TextInput
                     style={[
@@ -1045,7 +1435,7 @@ export default function AdminPanelModal() {
                         color: C.text,
                       },
                     ]}
-                    placeholder="Ej. Laguna de Mamacocha"
+                    placeholder="Ej. Catarata El Cornelio / Laguna de Mamacocha"
                     placeholderTextColor={C.textMuted}
                     value={placeForm.nombre}
                     onChangeText={(t) =>
@@ -1089,7 +1479,27 @@ export default function AdminPanelModal() {
                   </View>
 
                   <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Ubicación *
+                    Ubicación completa (para ficha de detalle) *
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: C.card,
+                        borderColor: C.border,
+                        color: C.text,
+                      },
+                    ]}
+                    placeholder="Ej. C.P. Jerez, Huasmín · Celendín"
+                    placeholderTextColor={C.textMuted}
+                    value={placeForm.ubicacion}
+                    onChangeText={(t) =>
+                      setPlaceForm((p) => ({ ...p, ubicacion: t }))
+                    }
+                  />
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Ubicación corta (para tarjeta en lista)
                   </Text>
                   <TextInput
                     style={[
@@ -1102,9 +1512,9 @@ export default function AdminPanelModal() {
                     ]}
                     placeholder="Ej. Huasmín, Celendín"
                     placeholderTextColor={C.textMuted}
-                    value={placeForm.ubicacion}
+                    value={placeForm.direccionCorta}
                     onChangeText={(t) =>
-                      setPlaceForm((p) => ({ ...p, ubicacion: t }))
+                      setPlaceForm((p) => ({ ...p, direccionCorta: t }))
                     }
                   />
 
@@ -1124,7 +1534,7 @@ export default function AdminPanelModal() {
                             color: C.text,
                           },
                         ]}
-                        placeholder="12 km"
+                        placeholder="Ej. 32 km o Centro"
                         placeholderTextColor={C.textMuted}
                         value={placeForm.distanciaCorta}
                         onChangeText={(t) =>
@@ -1148,7 +1558,7 @@ export default function AdminPanelModal() {
                             color: C.text,
                           },
                         ]}
-                        placeholder="2,625 m"
+                        placeholder="Ej. 2,840 m"
                         placeholderTextColor={C.textMuted}
                         value={placeForm.altitudTexto}
                         onChangeText={(t) =>
@@ -1172,7 +1582,7 @@ export default function AdminPanelModal() {
                             color: C.text,
                           },
                         ]}
-                        placeholder="Libre"
+                        placeholder="Libre o S/ 5.00"
                         placeholderTextColor={C.textMuted}
                         value={placeForm.precioTexto}
                         onChangeText={(t) =>
@@ -1183,7 +1593,7 @@ export default function AdminPanelModal() {
                   </View>
 
                   <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Descripción *
+                    Descripción del lugar *
                   </Text>
                   <TextInput
                     style={[
@@ -1195,7 +1605,7 @@ export default function AdminPanelModal() {
                         color: C.text,
                       },
                     ]}
-                    placeholder="Describe el atractivo turístico..."
+                    placeholder="Describe el atractivo turístico, paisaje, historia..."
                     placeholderTextColor={C.textMuted}
                     value={placeForm.desc}
                     onChangeText={(t) =>
@@ -1204,64 +1614,292 @@ export default function AdminPanelModal() {
                     multiline
                   />
 
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Imagen de portada
-                  </Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.presetsRow}
+                  {/* SECCIÓN 2: DETALLES DE VISITA */}
+                  <View
+                    style={[
+                      styles.formSectionHeader,
+                      { backgroundColor: C.primarySoft, marginTop: 18 },
+                    ]}
                   >
-                    {IMAGE_PRESETS.map((preset) => {
-                      const selected =
-                        !placeForm.imagenCustomUrl.trim() &&
-                        placeForm.imagenPreset === preset.key;
-                      return (
-                        <Pressable
-                          key={preset.key}
+                    <Ionicons
+                      name="compass-outline"
+                      size={16}
+                      color={C.primaryLight}
+                    />
+                    <Text
+                      style={[
+                        styles.formSectionTitle,
+                        { color: C.primaryLight },
+                      ]}
+                    >
+                      2. Detalles de Visita y Recomendaciones
+                    </Text>
+                  </View>
+
+                  <View style={styles.threeCols}>
+                    <View style={styles.col}>
+                      <Text
+                        style={[styles.inputLabel, { color: C.textSecondary }]}
+                      >
+                        Horario de atención
+                      </Text>
+                      <TextInput
+                        style={[
+                          styles.textInput,
+                          {
+                            backgroundColor: C.card,
+                            borderColor: C.border,
+                            color: C.text,
+                          },
+                        ]}
+                        placeholder="6:30 am – 4:30 pm"
+                        placeholderTextColor={C.textMuted}
+                        value={placeForm.horario}
+                        onChangeText={(t) =>
+                          setPlaceForm((p) => ({ ...p, horario: t }))
+                        }
+                      />
+                    </View>
+
+                    <View style={styles.col}>
+                      <Text
+                        style={[styles.inputLabel, { color: C.textSecondary }]}
+                      >
+                        Tiempo estimado
+                      </Text>
+                      <TextInput
+                        style={[
+                          styles.textInput,
+                          {
+                            backgroundColor: C.card,
+                            borderColor: C.border,
+                            color: C.text,
+                          },
+                        ]}
+                        placeholder="50 min en auto + 30 min"
+                        placeholderTextColor={C.textMuted}
+                        value={placeForm.tiempoEstimado}
+                        onChangeText={(t) =>
+                          setPlaceForm((p) => ({ ...p, tiempoEstimado: t }))
+                        }
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    ¿Qué llevar? (Recomendaciones al viajero)
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: C.card,
+                        borderColor: C.border,
+                        color: C.text,
+                      },
+                    ]}
+                    placeholder="Ej. Calzado de trekking, impermeable, bloqueador y agua."
+                    placeholderTextColor={C.textMuted}
+                    value={placeForm.llevar}
+                    onChangeText={(t) =>
+                      setPlaceForm((p) => ({ ...p, llevar: t }))
+                    }
+                  />
+
+                  <View style={styles.threeCols}>
+                    <View style={styles.col}>
+                      <Text
+                        style={[styles.inputLabel, { color: C.textSecondary }]}
+                      >
+                        Mejor horario de visita
+                      </Text>
+                      <TextInput
+                        style={[
+                          styles.textInput,
+                          {
+                            backgroundColor: C.card,
+                            borderColor: C.border,
+                            color: C.text,
+                          },
+                        ]}
+                        placeholder="7:30 am – 1:30 pm"
+                        placeholderTextColor={C.textMuted}
+                        value={placeForm.mejorHorario}
+                        onChangeText={(t) =>
+                          setPlaceForm((p) => ({ ...p, mejorHorario: t }))
+                        }
+                      />
+                    </View>
+
+                    <View style={styles.col}>
+                      <Text
+                        style={[styles.inputLabel, { color: C.textSecondary }]}
+                      >
+                        Nivel de dificultad
+                      </Text>
+                      <TextInput
+                        style={[
+                          styles.textInput,
+                          {
+                            backgroundColor: C.card,
+                            borderColor: C.border,
+                            color: C.text,
+                          },
+                        ]}
+                        placeholder="Fácil / Moderada"
+                        placeholderTextColor={C.textMuted}
+                        value={placeForm.dificultad}
+                        onChangeText={(t) =>
+                          setPlaceForm((p) => ({ ...p, dificultad: t }))
+                        }
+                      />
+                    </View>
+                  </View>
+
+                  {/* SECCIÓN 3: MAPA DONDE SE ENCUENTRA EL LUGAR */}
+                  <View
+                    style={[
+                      styles.formSectionHeader,
+                      { backgroundColor: C.primarySoft, marginTop: 18 },
+                    ]}
+                  >
+                    <Ionicons
+                      name="map-outline"
+                      size={16}
+                      color={C.primaryLight}
+                    />
+                    <Text
+                      style={[
+                        styles.formSectionTitle,
+                        { color: C.primaryLight },
+                      ]}
+                    >
+                      3. Mapa donde se encuentra el Lugar
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Enlace o código iframe de Google Maps
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: C.card,
+                        borderColor: C.border,
+                        color: C.text,
+                      },
+                    ]}
+                    placeholder='Pega el link de Google Maps o <iframe src="...">'
+                    placeholderTextColor={C.textMuted}
+                    value={placeForm.mapEmbedUrl}
+                    onChangeText={(t) =>
+                      setPlaceForm((p) => ({
+                        ...p,
+                        mapEmbedUrl: t,
+                      }))
+                    }
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <Text style={[styles.inputHint, { color: C.textMuted }]}>
+                    Puedes pegar el enlace de Google Maps (Compartir → Insertar
+                    un mapa) o escribir la referencia de búsqueda abajo.
+                  </Text>
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Referencia de búsqueda en Google Maps
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: C.card,
+                        borderColor: C.border,
+                        color: C.text,
+                      },
+                    ]}
+                    placeholder="Ej. Catarata El Cornelio, Huasmin, Celendin, Cajamarca"
+                    placeholderTextColor={C.textMuted}
+                    value={placeForm.mapsQuery}
+                    onChangeText={(t) =>
+                      setPlaceForm((p) => ({ ...p, mapsQuery: t }))
+                    }
+                  />
+
+                  {placeMapPreviewUrl ? (
+                    <View style={styles.mapPreviewSection}>
+                      <View style={styles.mapPreviewTitleRow}>
+                        <Text
                           style={[
-                            styles.presetCard,
+                            styles.inputLabel,
                             {
-                              borderColor: selected ? '#0F5C41' : C.border,
-                              backgroundColor: selected
-                                ? C.primarySoft
-                                : C.card,
+                              color: C.textSecondary,
+                              marginTop: 0,
+                              marginBottom: 0,
                             },
                           ]}
+                        >
+                          Vista previa del mapa en Detalles
+                        </Text>
+                        <Pressable
+                          style={styles.testMapsLinkBtn}
                           onPress={() =>
-                            setPlaceForm((p) => ({
-                              ...p,
-                              imagenPreset: preset.key,
-                              imagenCustomUrl: '',
-                            }))
+                            openGoogleMapsLocation({
+                              nombre: placeForm.nombre || 'Celendín',
+                              ubicacion: placeForm.ubicacion || 'Celendín',
+                              mapsQuery: placeForm.mapsQuery,
+                            })
                           }
                         >
-                          <Image
-                            source={getPlaceImageSource(preset.key)}
-                            style={styles.presetThumb}
-                            resizeMode="cover"
+                          <Ionicons
+                            name="open-outline"
+                            size={13}
+                            color={C.primaryLight}
                           />
                           <Text
                             style={[
-                              styles.presetLabel,
-                              {
-                                color: selected
-                                  ? C.primaryLight
-                                  : C.textSecondary,
-                              },
+                              styles.testMapsLinkText,
+                              { color: C.primaryLight },
                             ]}
-                            numberOfLines={1}
                           >
-                            {preset.labelEs}
+                            Probar en Google Maps
                           </Text>
                         </Pressable>
-                      );
-                    })}
-                  </ScrollView>
+                      </View>
+                      <View
+                        style={[
+                          styles.mapFrameWrap,
+                          { borderColor: C.border, backgroundColor: C.cardAlt },
+                        ]}
+                      >
+                        {Platform.OS === 'web' ? (
+                          <iframe
+                            src={placeMapPreviewUrl}
+                            style={{ width: '100%', height: '100%', border: 0 }}
+                            allowFullScreen
+                            loading="lazy"
+                          />
+                        ) : (
+                          <WebView
+                            source={{
+                              html: buildMapIframeHtml(placeMapPreviewUrl),
+                            }}
+                            style={styles.mapWebView}
+                            javaScriptEnabled
+                            domStorageEnabled
+                          />
+                        )}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {/* BOTÓN PARA SUBIR IMAGEN DESDE TELÉFONO O PC + LINK DE IMAGEN */}
+                  {renderUploadImageButton(placeForm, setPlaceForm)}
                 </>
               )}
 
-              {/* FORMULARIO RUTA 3: DIRECTORIO */}
+              {/* FORMULARIO RUTA 2: DIRECTORIO */}
               {activeTab === 'directory' && (
                 <>
                   <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
@@ -1410,60 +2048,7 @@ export default function AdminPanelModal() {
                     </View>
                   </View>
 
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Imagen de portada
-                  </Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.presetsRow}
-                  >
-                    {IMAGE_PRESETS.map((preset) => {
-                      const selected =
-                        !dirForm.imagenCustomUrl.trim() &&
-                        dirForm.imagenPreset === preset.key;
-                      return (
-                        <Pressable
-                          key={preset.key}
-                          style={[
-                            styles.presetCard,
-                            {
-                              borderColor: selected ? '#0F5C41' : C.border,
-                              backgroundColor: selected
-                                ? C.primarySoft
-                                : C.card,
-                            },
-                          ]}
-                          onPress={() =>
-                            setDirForm((p) => ({
-                              ...p,
-                              imagenPreset: preset.key,
-                              imagenCustomUrl: '',
-                            }))
-                          }
-                        >
-                          <Image
-                            source={getPlaceImageSource(preset.key)}
-                            style={styles.presetThumb}
-                            resizeMode="cover"
-                          />
-                          <Text
-                            style={[
-                              styles.presetLabel,
-                              {
-                                color: selected
-                                  ? C.primaryLight
-                                  : C.textSecondary,
-                              },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {preset.labelEs}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
+                  {renderUploadImageButton(dirForm, setDirForm)}
                 </>
               )}
 
@@ -1535,6 +2120,36 @@ export default function AdminPanelModal() {
 
               {activeTab === 'perfil' && perfilSubTab === 'transporte' && (
                 <>
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Tipo de transporte
+                  </Text>
+                  <View style={styles.chipsRow}>
+                    {TRANSPORT_TYPES.map((t) => {
+                      const active = (busForm.tipo || 'buses') === t.key;
+                      return (
+                        <Pressable
+                          key={t.key}
+                          style={[
+                            styles.catChip,
+                            active
+                              ? styles.catChipActive
+                              : { backgroundColor: C.card, borderColor: C.border },
+                          ]}
+                          onPress={() => setBusForm((p) => ({ ...p, tipo: t.key }))}
+                        >
+                          <Text
+                            style={[
+                              styles.catChipText,
+                              { color: active ? '#FFFFFF' : C.text },
+                            ]}
+                          >
+                            {t.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
                   <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                     Nombre de la Agencia / Ruta *
                   </Text>
@@ -1978,6 +2593,47 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 34,
   },
+  formSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 9,
+    marginTop: 4,
+  },
+  formSectionTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+  mapPreviewSection: {
+    marginTop: 12,
+    gap: 6,
+  },
+  mapPreviewTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  testMapsLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+  },
+  testMapsLinkText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+  },
+  mapFrameWrap: {
+    height: 190,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  mapWebView: {
+    flex: 1,
+  },
   inputLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -2021,9 +2677,154 @@ const styles = StyleSheet.create({
   col: {
     flex: 1,
   },
-  presetsRow: {
+  uploadSectionWrap: {
+    marginTop: 8,
+  },
+  uploadDeviceBtn: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  directFileOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 20,
+    backgroundColor: 'transparent',
+  },
+  transparentWebView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  uploadIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#0F5C41',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkToggleBtn: {
+    marginTop: 10,
+    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  linkIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkInputBox: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
     gap: 8,
-    paddingVertical: 4,
+  },
+  linkBoxLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  linkInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  linkFlexInput: {
+    flex: 1,
+  },
+  applyLinkBtn: {
+    height: 40,
+    backgroundColor: '#0F5C41',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  applyLinkBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  uploadBtnTextCol: {
+    flex: 1,
+  },
+  uploadBtnTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
+  uploadBtnSub: {
+    fontSize: 11.5,
+    marginTop: 2,
+  },
+  uploadedPreviewWrap: {
+    marginTop: 10,
+    position: 'relative',
+  },
+  removeUploadedImgBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 10,
+    backgroundColor: 'rgba(225, 29, 72, 0.92)',
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  removeUploadedImgText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '800',
+  },
+  hiddenPickerWebView: {
+    width: 1,
+    height: 1,
+    opacity: 0,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+  },
+  inputHint: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 4,
+  },
+  urlPreview: {
+    width: '100%',
+    height: 150,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 8,
+    backgroundColor: '#E5E7EB',
+  },
+  urlInvalidText: {
+    color: '#E11D48',
+    fontSize: 11.5,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+  listErrorText: {
+    marginTop: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   presetCard: {
     width: 86,
@@ -2113,14 +2914,30 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 12,
     borderWidth: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
+    position: 'relative',
+    paddingHorizontal: 44,
   },
   pinDotsText: {
     fontSize: 26,
     fontWeight: '900',
     letterSpacing: 6,
+  },
+  pinNumbersText: {
+    fontSize: 21,
+    fontWeight: '900',
+    letterSpacing: 4,
+  },
+  pinEyeBtn: {
+    position: 'absolute',
+    right: 12,
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pinErrorText: {
     color: '#E11D48',
