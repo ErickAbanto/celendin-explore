@@ -11,6 +11,39 @@ const LOCAL_IMAGES = {
   '/images/sombrero-shilico.jpg': require('../../assets/images/sombrero-shilico.jpg'),
 };
 
+export const IMAGE_PRESETS = [
+  {
+    key: '/images/celendin-hero.jpg',
+    labelEs: 'Panorámica',
+    labelEn: 'Panorama',
+  },
+  {
+    key: '/images/catarata-cornelio.jpg',
+    labelEs: 'Naturaleza',
+    labelEn: 'Nature',
+  },
+  {
+    key: '/images/plaza-armas.jpg',
+    labelEs: 'Centro / Plaza',
+    labelEn: 'Main Square',
+  },
+  {
+    key: '/images/mirador-san-isidro.jpg',
+    labelEs: 'Mirador',
+    labelEn: 'Viewpoint',
+  },
+  {
+    key: '/images/sombrero-shilico.jpg',
+    labelEs: 'Artesanía',
+    labelEn: 'Crafts',
+  },
+  {
+    key: '/images/chocolate-celendin.jpg',
+    labelEs: 'Gastronomía',
+    labelEn: 'Gastronomy',
+  },
+];
+
 export function getPlaceImageSource(itemOrPath) {
   const path =
     typeof itemOrPath === 'string' ? itemOrPath : itemOrPath?.imagen;
@@ -93,38 +126,91 @@ export function openGoogleMapsRoute(item) {
 
 const DEFAULT_PLACES_BASE = placesFromDataJs;
 
-export function mergeWithCatalog(remotePlaces) {
+export function getStarIconNames(ratingValue) {
+  const num = Math.max(0, Math.min(5, Number(ratingValue) || 0));
+  return [1, 2, 3, 4, 5].map((star) => {
+    if (num >= star) return 'star';
+    if (num >= star - 0.5) return 'star-half';
+    return 'star-outline';
+  });
+}
+
+export function mergeWithCatalog(remotePlaces, currentPlaces = []) {
   if (!Array.isArray(remotePlaces) || remotePlaces.length === 0) {
-    return DEFAULT_PLACES_BASE;
+    return Array.isArray(currentPlaces) && currentPlaces.length > 0
+      ? currentPlaces
+      : DEFAULT_PLACES_BASE;
   }
 
-  return DEFAULT_PLACES_BASE.map((baseItem) => {
+  const matchedIds = new Set();
+  const matchedNames = new Set();
+
+  const baseMerged = DEFAULT_PLACES_BASE.map((baseItem) => {
+    const localCur = (Array.isArray(currentPlaces) ? currentPlaces : []).find(
+      (c) => c.id === baseItem.id
+    );
     const match =
       remotePlaces.find((r) => r.id && r.id === baseItem.id) ||
-      remotePlaces.find((r) => r.nombre === baseItem.nombre) ||
-      remotePlaces.find((r) => r.imagen === baseItem.imagen);
+      remotePlaces.find((r) => r.nombre === baseItem.nombre);
 
-    if (!match) return baseItem;
+    if (match?.id) matchedIds.add(match.id);
+    if (match?.nombre) matchedNames.add(match.nombre);
+
+    const hasLocalVotes = (localCur?.resenasCount ?? 0) > 0;
+
     return {
       ...baseItem,
-      ...match,
-      id: match.id || baseItem.id,
-      _id: match._id || baseItem.id,
-      tips: match.tips?.llevar ? match.tips : baseItem.tips,
-      resenas: Array.isArray(match.resenas) ? match.resenas : baseItem.resenas,
-      resenasCount:
-        typeof match.resenasCount === 'number'
-          ? match.resenasCount
-          : baseItem.resenasCount ?? 0,
-      ratingSum:
-        typeof match.ratingSum === 'number'
-          ? match.ratingSum
-          : baseItem.ratingSum ?? 0,
-      rating: match.rating ?? baseItem.rating ?? '0.0',
-      mapEmbedUrl: match.mapEmbedUrl || baseItem.mapEmbedUrl || '',
-      imagenUrl: match.imagenUrl || baseItem.imagenUrl,
+      id: baseItem.id,
+      _id: match?._id || baseItem.id,
+      resenas: hasLocalVotes ? localCur.resenas : [],
+      resenasCount: hasLocalVotes ? localCur.resenasCount : 0,
+      ratingSum: hasLocalVotes ? localCur.ratingSum : 0,
+      rating: hasLocalVotes ? localCur.rating : '0.0',
+      mapEmbedUrl: baseItem.mapEmbedUrl || match?.mapEmbedUrl || '',
+      imagenUrl: match?.imagenUrl || baseItem.imagenUrl,
     };
   });
+
+  DEFAULT_PLACES_BASE.forEach((b) => {
+    if (b.id) matchedIds.add(b.id);
+    if (b.nombre) matchedNames.add(b.nombre);
+  });
+
+  const extraRemote = remotePlaces
+    .filter(
+      (r) =>
+        r &&
+        r.nombre &&
+        !(r.id && matchedIds.has(r.id)) &&
+        !matchedNames.has(r.nombre)
+    )
+    .map((r) => {
+      if (r.id) matchedIds.add(r.id);
+      if (r.nombre) matchedNames.add(r.nombre);
+      return {
+        ...r,
+        id: r.id || r._id || `lugar-${Date.now()}`,
+        rating: r.rating ?? '0.0',
+        ratingSum: typeof r.ratingSum === 'number' ? r.ratingSum : 0,
+        resenasCount: typeof r.resenasCount === 'number' ? r.resenasCount : 0,
+        resenas: Array.isArray(r.resenas) ? r.resenas : [],
+        tips: r.tips || {
+          llevar: 'Calzado cómodo, agua y protección solar.',
+          mejorHorario: r.horario || '8:00 am – 5:00 pm',
+          dificultad: 'Fácil – Moderada.',
+        },
+      };
+    });
+
+  const extraLocal = (Array.isArray(currentPlaces) ? currentPlaces : []).filter(
+    (localItem) =>
+      localItem &&
+      localItem.nombre &&
+      !(localItem.id && matchedIds.has(localItem.id)) &&
+      !matchedNames.has(localItem.nombre)
+  );
+
+  return [...baseMerged, ...extraRemote, ...extraLocal];
 }
 
 export function getInitialPlacesCatalog() {

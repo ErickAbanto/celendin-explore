@@ -4,12 +4,14 @@ import {
   Image,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +22,7 @@ import {
   buildMapIframeHtml,
   getGoogleMapsEmbedUrl,
   getPlaceImageSource,
+  getStarIconNames,
   openGoogleMapsLocation,
   openGoogleMapsRoute,
 } from '../constants/placesCatalog';
@@ -27,26 +30,33 @@ import {
   MAX_REVIEWS_PER_ITEM,
   useSavedPlaces,
 } from '../context/SavedPlacesContext';
+import { localizePlace, tr } from '../constants/i18n';
 
 const DETAIL_TABS = [
-  { key: 'descripcion', labelEs: 'Descripción', labelEn: 'Overview' },
-  { key: 'comoLlegar', labelEs: 'Cómo llegar', labelEn: 'Directions' },
-  { key: 'tips', labelEs: 'Tips', labelEn: 'Tips' },
+  { key: 'resumen', labelEs: 'Información', labelEn: 'Overview' },
+  { key: 'mapa', labelEs: 'Mapa', labelEn: 'Map' },
   { key: 'resenas', labelEs: 'Reseñas', labelEn: 'Reviews' },
 ];
 
 export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
-  const place = placeProp || lugar;
   const insets = useSafeAreaInsets();
-  const { isSaved, toggleSaved, submitPlaceReview, darkMode, language } =
-    useSavedPlaces();
+  const {
+    isSaved,
+    toggleSaved,
+    submitPlaceReview,
+    refreshing,
+    syncPlaces,
+    darkMode,
+    language,
+  } = useSavedPlaces();
+  const place = localizePlace(placeProp || lugar, language);
   const C = getColors(darkMode);
   const isEn = language === 'en';
-  const [activeTab, setActiveTab] = useState('descripcion');
+  const [activeTab, setActiveTab] = useState('resumen');
   const [userRating, setUserRating] = useState(0);
   const [reviewerName, setReviewerName] = useState('');
   const [reviewText, setReviewText] = useState('');
-  const [reviewStatus, setReviewStatus] = useState(null); // { ok: boolean, message: string } | null
+  const [reviewStatus, setReviewStatus] = useState(null);
   const [submittingReview, setSubmittingReview] = useState(false);
 
   const saved = place ? isSaved(place.id) : false;
@@ -59,16 +69,23 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
     Platform.OS === 'android' ? 16 : 14
   );
 
+  const handleBackToLugares = () => {
+    syncPlaces();
+    if (typeof onBack === 'function') {
+      onBack();
+    }
+  };
+
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      onBack();
+      handleBackToLugares();
       return true;
     });
     return () => sub.remove();
   }, [onBack]);
 
   useEffect(() => {
-    setActiveTab('descripcion');
+    setActiveTab('resumen');
     setUserRating(0);
     setReviewerName('');
     setReviewText('');
@@ -78,19 +95,20 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
   if (!place) return null;
 
   const iframeSrc = getGoogleMapsEmbedUrl(place);
-  const imageSource = getPlaceImageSource(place.imagen);
+  const imageSource = getPlaceImageSource(place);
   const reviews = Array.isArray(place.resenas) ? place.resenas : [];
   const totalReviews = place.resenasCount ?? 0;
 
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `${place.nombre} — ${place.ubicacion || 'Celendín, Cajamarca'}. Descubre este destino con Celendín Explore.`,
+        message: `${place.nombre} — ${place.ubicacion || 'Celendín, Cajamarca'}.`,
       });
-    } catch {
-      // Ignore user cancellation
-    }
+    } catch {}
   };
+
+  const defaultHorario = '8:00 am – 5:00 pm';
+  const defaultLlevar = tr('Calzado cómodo, agua y cámara.', language);
 
   return (
     <View style={[styles.container, { backgroundColor: C.card }]}>
@@ -100,32 +118,37 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleBackToLugares}
+            tintColor="#0F5C41"
+            colors={['#0F5C41']}
+          />
+        }
       >
-        {/* Hero Image Header */}
-        <View style={[styles.heroWrap, { height: 215 + topInset }]}>
+        {/* Cabecera de imagen limpia (sin textos ni sombras encima) */}
+        <View style={[styles.heroWrap, { height: 195 + topInset }]}>
           <Image
             source={imageSource}
             style={styles.heroImage}
             resizeMode="cover"
           />
-          <View style={styles.heroTopScrim} />
-          <View style={styles.heroBottomScrim} />
 
-          {/* Floating Back, Favorite & Share */}
           <View style={[styles.heroTopBar, { paddingTop: topInset + 8 }]}>
-            <Pressable
+            <TouchableOpacity
               style={styles.circleBtn}
-              onPress={onBack}
-              accessibilityLabel={isEn ? 'Back' : 'Volver'}
+              activeOpacity={0.8}
+              hitSlop={12}
+              onPress={handleBackToLugares}
             >
               <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-            </Pressable>
+            </TouchableOpacity>
 
             <View style={styles.heroTopRight}>
               <Pressable
                 style={styles.circleBtn}
                 onPress={() => toggleSaved(place.id)}
-                accessibilityLabel={isEn ? 'Favorite' : 'Guardar'}
               >
                 <Ionicons
                   name={saved ? 'heart' : 'heart-outline'}
@@ -133,46 +156,40 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                   color={saved ? '#F43F5E' : '#FFFFFF'}
                 />
               </Pressable>
-              <Pressable
-                style={styles.circleBtn}
-                onPress={handleShare}
-                accessibilityLabel={isEn ? 'Share' : 'Compartir'}
-              >
+              <Pressable style={styles.circleBtn} onPress={handleShare}>
                 <Ionicons name="share-social-outline" size={19} color="#FFFFFF" />
               </Pressable>
             </View>
           </View>
-
-          {/* Hero Bottom Title & Pills */}
-          <View style={styles.heroBottom}>
-            <View style={styles.pillRow}>
-              <View style={styles.categoryPill}>
-                <Text style={styles.categoryPillText}>
-                  {(place.categoria || 'NATURALEZA').toUpperCase()}
-                </Text>
-              </View>
-              {!!place.etiquetaDestacado && (
-                <View style={styles.featuredPill}>
-                  <Text style={styles.featuredPillText}>
-                    {place.etiquetaDestacado}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.heroTitle} numberOfLines={2}>
-              {place.nombre}
-            </Text>
-          </View>
         </View>
 
-        {/* 4 Metric Cards Strip */}
+        {/* Título y categoría afuera/debajo de la imagen */}
+        <View
+          style={[
+            styles.titleSectionClean,
+            { backgroundColor: C.card, borderBottomColor: C.border },
+          ]}
+        >
+          <View
+            style={[
+              styles.categoryPill,
+              { backgroundColor: C.primarySoft },
+            ]}
+          >
+            <Text style={[styles.categoryPillText, { color: C.primaryLight }]}>
+              {place.categoria}
+            </Text>
+          </View>
+          <Text style={[styles.heroTitle, { color: C.text }]}>
+            {place.nombre}
+          </Text>
+        </View>
+
+        {/* 3 métricas clave */}
         <View
           style={[
             styles.metricsStrip,
-            {
-              backgroundColor: C.background,
-              borderBottomColor: C.border,
-            },
+            { backgroundColor: C.background, borderBottomColor: C.border },
           ]}
         >
           <View
@@ -182,13 +199,22 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
             ]}
           >
             <View style={styles.metricValueRow}>
-              <Ionicons name="star" size={13} color="#F5A623" />
-              <Text style={[styles.metricValueAmber, { marginLeft: 3 }]}>
+              {getStarIconNames(place.rating).map((iconName, sIdx) => (
+                <Ionicons
+                  key={sIdx}
+                  name={iconName}
+                  size={11}
+                  color={
+                    Number(place.rating || 0) > 0 ? '#F5A623' : C.textMuted
+                  }
+                />
+              ))}
+              <Text style={[styles.metricValue, { color: C.text, marginLeft: 4 }]}>
                 {place.rating || '0.0'}
               </Text>
             </View>
-            <Text style={[styles.metricLabel, { color: C.textSecondary }]} numberOfLines={1}>
-              {totalReviews} {isEn ? 'reviews' : 'reseñas'}
+            <Text style={[styles.metricLabel, { color: C.textSecondary }]}>
+              {isEn ? 'Rating' : 'Calificación'}
             </Text>
           </View>
 
@@ -198,27 +224,10 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
               { backgroundColor: C.card, borderColor: C.border },
             ]}
           >
-            <Text
-              style={[styles.metricValueGreen, { color: C.primaryLight }]}
-              numberOfLines={1}
-            >
-              {place.altitudTexto || '2,625 m.s.n.m.'}
+            <Text style={[styles.metricValue, { color: C.primaryLight }]}>
+              {place.distanciaCorta || tr('Centro', language)}
             </Text>
-            <Text style={[styles.metricLabel, { color: C.textSecondary }]} numberOfLines={1}>
-              {isEn ? 'Altitude' : 'Altitud'}
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.metricCard,
-              { backgroundColor: C.card, borderColor: C.border },
-            ]}
-          >
-            <Text style={[styles.metricValueDark, { color: C.text }]} numberOfLines={1}>
-              {place.distanciaCorta || 'Centro'}
-            </Text>
-            <Text style={[styles.metricLabel, { color: C.textSecondary }]} numberOfLines={1}>
+            <Text style={[styles.metricLabel, { color: C.textSecondary }]}>
               {isEn ? 'Distance' : 'Distancia'}
             </Text>
           </View>
@@ -229,16 +238,16 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
               { backgroundColor: C.card, borderColor: C.border },
             ]}
           >
-            <Text style={styles.metricValueAmber} numberOfLines={1}>
-              {place.precioTexto || 'Libre'}
+            <Text style={[styles.metricValue, { color: '#D97706' }]}>
+              {place.precioTexto || tr('Libre', language)}
             </Text>
-            <Text style={[styles.metricLabel, { color: C.textSecondary }]} numberOfLines={1}>
+            <Text style={[styles.metricLabel, { color: C.textSecondary }]}>
               {isEn ? 'Entry' : 'Entrada'}
             </Text>
           </View>
         </View>
 
-        {/* 4 Tabs Navigation */}
+        {/* 3 Pestañas limpias */}
         <View
           style={[
             styles.tabsBar,
@@ -263,7 +272,6 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                   style={[
                     styles.tabBtnText,
                     { color: active ? C.primaryLight : C.textSecondary },
-                    active && styles.tabBtnTextActive,
                   ]}
                 >
                   {isEn ? tab.labelEn : tab.labelEs}
@@ -273,121 +281,54 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
           })}
         </View>
 
-        {/* Tab Body Content */}
+        {/* Contenido de pestaña */}
         <View style={styles.tabBody}>
-          {activeTab === 'descripcion' && (
-            <View>
-              <Text style={[styles.descText, { color: C.textSecondary }]}>
+          {activeTab === 'resumen' && (
+            <View style={styles.sectionGap}>
+              <Text style={[styles.descText, { color: C.text }]}>
                 {place.desc}
               </Text>
 
-              {/* Estimated Experience Box */}
               <View
                 style={[
-                  styles.estimateCard,
-                  {
-                    backgroundColor: darkMode ? '#102920' : '#EBF7F1',
-                    borderColor: darkMode ? '#1F4D3C' : '#C6E7D6',
-                  },
-                ]}
-              >
-                <View style={styles.estimateIconWrap}>
-                  <Ionicons
-                    name="time-outline"
-                    size={21}
-                    color={darkMode ? '#34D399' : COLORS_FALLBACK.primary}
-                  />
-                </View>
-                <View style={styles.estimateTextCol}>
-                  <Text
-                    style={[
-                      styles.estimateTitle,
-                      { color: darkMode ? '#6EE7B7' : '#0F5C41' },
-                    ]}
-                  >
-                    {isEn
-                      ? 'Estimated experience time'
-                      : 'Tiempo estimado de experiencia'}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.estimateSub,
-                      { color: darkMode ? '#D1FAE5' : '#4B5563' },
-                    ]}
-                  >
-                    {place.tiempoEstimado || place.horario}
-                  </Text>
-                </View>
-              </View>
-
-              {!!place.historia && (
-                <View
-                  style={[
-                    styles.extraCard,
-                    { backgroundColor: C.cardAlt, borderColor: C.border },
-                  ]}
-                >
-                  <Text style={[styles.extraTitle, { color: C.text }]}>
-                    {isEn ? 'Culture & History' : 'Valor Cultural e Historia'}
-                  </Text>
-                  <Text style={[styles.extraBody, { color: C.textSecondary }]}>
-                    {place.historia}
-                  </Text>
-                </View>
-              )}
-
-              {!!place.actividades && (
-                <View
-                  style={[
-                    styles.extraCard,
-                    { backgroundColor: C.cardAlt, borderColor: C.border },
-                  ]}
-                >
-                  <Text style={[styles.extraTitle, { color: C.text }]}>
-                    {isEn ? 'Recommended Activities' : 'Actividades y Horario'}
-                  </Text>
-                  <Text style={[styles.extraBody, { color: C.textSecondary }]}>
-                    {place.actividades}
-                  </Text>
-                  {!!place.horario && (
-                    <Text
-                      style={[
-                        styles.scheduleNote,
-                        { color: C.primaryLight },
-                      ]}
-                    >
-                      {place.horario}
-                    </Text>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-
-          {activeTab === 'comoLlegar' && (
-            <View style={styles.sectionGap}>
-              <View
-                style={[
-                  styles.extraCard,
+                  styles.infoBox,
                   { backgroundColor: C.cardAlt, borderColor: C.border },
                 ]}
               >
-                <View style={styles.routeHeader}>
-                  <Ionicons name="navigate-circle" size={22} color={C.primaryLight} />
-                  <Text style={[styles.extraTitle, { color: C.text, marginBottom: 0 }]}>
-                    {isEn ? 'Access & Coordinates' : 'Acceso y Ubicación'}
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="location-outline"
+                    size={16}
+                    color={C.primaryLight}
+                  />
+                  <Text style={[styles.infoText, { color: C.textSecondary }]}>
+                    {place.ubicacion}
                   </Text>
                 </View>
-                <Text style={[styles.extraBody, { color: C.textSecondary, marginTop: 8 }]}>
-                  {place.ubicacion}
-                </Text>
-                {!!place.distancia && (
-                  <Text style={[styles.extraBody, { color: C.text, marginTop: 6, fontWeight: '600' }]}>
-                    {place.distancia}
-                  </Text>
-                )}
-              </View>
 
+                <View style={styles.infoRow}>
+                  <Ionicons name="time-outline" size={16} color="#D97706" />
+                  <Text style={[styles.infoText, { color: C.textSecondary }]}>
+                    {place.horario || defaultHorario}
+                  </Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="bag-handle-outline"
+                    size={16}
+                    color={C.primaryLight}
+                  />
+                  <Text style={[styles.infoText, { color: C.textSecondary }]}>
+                    {place.tips?.llevar || defaultLlevar}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {activeTab === 'mapa' && (
+            <View style={styles.sectionGap}>
               {iframeSrc ? (
                 <View
                   style={[
@@ -395,14 +336,21 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                     { borderColor: C.border, backgroundColor: C.cardAlt },
                   ]}
                 >
-                  <WebView
-                    source={{ html: buildMapIframeHtml(iframeSrc) }}
-                    style={styles.mapWebView}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    scrollEnabled={false}
-                    nestedScrollEnabled={false}
-                  />
+                  {Platform.OS === 'web' ? (
+                    <iframe
+                      src={iframeSrc}
+                      style={{ width: '100%', height: '100%', border: 0 }}
+                      allowFullScreen
+                      loading="lazy"
+                    />
+                  ) : (
+                    <WebView
+                      source={{ html: buildMapIframeHtml(iframeSrc) }}
+                      style={styles.mapWebView}
+                      javaScriptEnabled
+                      domStorageEnabled
+                    />
+                  )}
                 </View>
               ) : null}
 
@@ -410,75 +358,11 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                 style={styles.routeBtn}
                 onPress={() => openGoogleMapsRoute(place)}
               >
-                <Ionicons name="map-outline" size={18} color="#FFFFFF" />
+                <Ionicons name="navigate-outline" size={17} color="#FFFFFF" />
                 <Text style={styles.routeBtnText}>
-                  {isEn
-                    ? 'Calculate route in Google Maps'
-                    : 'Calcular ruta desde mi ubicación'}
+                  {isEn ? 'Directions in Google Maps' : 'Cómo llegar con Google Maps'}
                 </Text>
               </Pressable>
-            </View>
-          )}
-
-          {activeTab === 'tips' && (
-            <View style={styles.sectionGap}>
-              <View
-                style={[
-                  styles.tipRowCard,
-                  { backgroundColor: C.cardAlt, borderColor: C.border },
-                ]}
-              >
-                <View style={[styles.tipIconBadge, { backgroundColor: '#FEF3C7' }]}>
-                  <Ionicons name="bag-handle-outline" size={19} color="#D97706" />
-                </View>
-                <View style={styles.tipContent}>
-                  <Text style={[styles.tipHeading, { color: C.text }]}>
-                    {isEn ? 'What to bring' : 'Qué llevar'}
-                  </Text>
-                  <Text style={[styles.tipCopy, { color: C.textSecondary }]}>
-                    {place.tips?.llevar ||
-                      'Agua, calzado cómodo, bloqueador solar y abrigo ligero.'}
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  styles.tipRowCard,
-                  { backgroundColor: C.cardAlt, borderColor: C.border },
-                ]}
-              >
-                <View style={[styles.tipIconBadge, { backgroundColor: '#DCFCE7' }]}>
-                  <Ionicons name="sunny-outline" size={19} color="#0F5C41" />
-                </View>
-                <View style={styles.tipContent}>
-                  <Text style={[styles.tipHeading, { color: C.text }]}>
-                    {isEn ? 'Best time to visit' : 'Mejor horario de visita'}
-                  </Text>
-                  <Text style={[styles.tipCopy, { color: C.textSecondary }]}>
-                    {place.tips?.mejorHorario || '8:00 am – 4:00 pm.'}
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  styles.tipRowCard,
-                  { backgroundColor: C.cardAlt, borderColor: C.border },
-                ]}
-              >
-                <View style={[styles.tipIconBadge, { backgroundColor: '#DBEAFE' }]}>
-                  <Ionicons name="walk-outline" size={19} color="#1D4ED8" />
-                </View>
-                <View style={styles.tipContent}>
-                  <Text style={[styles.tipHeading, { color: C.text }]}>
-                    {isEn ? 'Difficulty level' : 'Nivel de dificultad'}
-                  </Text>
-                  <Text style={[styles.tipCopy, { color: C.textSecondary }]}>
-                    {place.tips?.dificultad || 'Fácil – Moderada.'}
-                  </Text>
-                </View>
-              </View>
             </View>
           )}
 
@@ -494,10 +378,20 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                   <Text style={[styles.reviewScoreBig, { color: C.text }]}>
                     {place.rating || '0.0'}
                   </Text>
-                  <Text style={[styles.reviewCountText, { color: C.textSecondary }]}>
-                    {totalReviews} / {MAX_REVIEWS_PER_ITEM}{' '}
-                    {isEn ? 'reviews' : 'reseñas'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 2, marginTop: 2 }}>
+                    {getStarIconNames(place.rating).map((iconName, sIdx) => (
+                      <Ionicons
+                        key={sIdx}
+                        name={iconName}
+                        size={13}
+                        color={
+                          Number(place.rating || 0) > 0
+                            ? '#F5A623'
+                            : C.textMuted
+                        }
+                      />
+                    ))}
+                  </View>
                 </View>
                 <View style={styles.starsTapRow}>
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -512,48 +406,21 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                     >
                       <Ionicons
                         name={star <= userRating ? 'star' : 'star-outline'}
-                        size={20}
-                        color={
-                          totalReviews >= MAX_REVIEWS_PER_ITEM
-                            ? C.textMuted
-                            : '#F5A623'
-                        }
+                        size={22}
+                        color="#F5A623"
                       />
                     </Pressable>
                   ))}
                 </View>
               </View>
 
-              {totalReviews >= MAX_REVIEWS_PER_ITEM ? (
-                <View
-                  style={[
-                    styles.reviewCard,
-                    { backgroundColor: C.cardAlt, borderColor: C.border },
-                  ]}
-                >
-                  <Text style={[styles.reviewBody, { color: C.textSecondary }]}>
-                    {isEn
-                      ? `Maximum limit of ${MAX_REVIEWS_PER_ITEM} reviews reached to protect database capacity.`
-                      : `Se alcanzó el límite de ${MAX_REVIEWS_PER_ITEM} reseñas para este atractivo (protección de base de datos gratuita).`}
-                  </Text>
-                </View>
-              ) : userRating > 0 ? (
+              {userRating > 0 && totalReviews < MAX_REVIEWS_PER_ITEM && (
                 <View
                   style={[
                     styles.reviewFormCard,
                     { backgroundColor: C.cardAlt, borderColor: C.border },
                   ]}
                 >
-                  <View style={styles.reviewFormHeader}>
-                    <Text style={[styles.ratedHint, { color: C.primaryLight }]}>
-                      {isEn
-                        ? `Selected rating: ${userRating}/5`
-                        : `Tu calificación: ${userRating}/5`}
-                    </Text>
-                    <Text style={[styles.charCount, { color: C.textMuted }]}>
-                      {reviewText.length}/180
-                    </Text>
-                  </View>
                   <TextInput
                     style={[
                       styles.nameInput,
@@ -563,9 +430,7 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                         backgroundColor: C.card,
                       },
                     ]}
-                    placeholder={
-                      isEn ? 'Your name (optional)' : 'Tu nombre (opcional)'
-                    }
+                    placeholder={isEn ? 'Your name (optional)' : 'Tu nombre (opcional)'}
                     placeholderTextColor={C.textMuted}
                     value={reviewerName}
                     onChangeText={setReviewerName}
@@ -580,22 +445,15 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                         backgroundColor: C.card,
                       },
                     ]}
-                    placeholder={
-                      isEn
-                        ? 'Write a short review (optional)...'
-                        : 'Escribe un comentario breve (opcional)...'
-                    }
+                    placeholder={isEn ? 'Short comment...' : 'Comentario breve...'}
                     placeholderTextColor={C.textMuted}
                     value={reviewText}
                     onChangeText={setReviewText}
-                    maxLength={180}
+                    maxLength={160}
                     multiline
                   />
                   <Pressable
-                    style={[
-                      styles.publishReviewBtn,
-                      submittingReview && { opacity: 0.65 },
-                    ]}
+                    style={styles.publishReviewBtn}
                     disabled={submittingReview}
                     onPress={async () => {
                       setSubmittingReview(true);
@@ -609,64 +467,29 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                       if (result?.ok) {
                         setReviewStatus({
                           ok: true,
-                          message: isEn
-                            ? `Thanks! Your ${userRating}/5 review was saved.`
-                            : `¡Gracias! Tu reseña de ${userRating}/5 quedó guardada.`,
+                          message: isEn ? 'Review saved!' : '¡Reseña guardada!',
                         });
                         setUserRating(0);
                         setReviewerName('');
                         setReviewText('');
-                      } else {
-                        setReviewStatus({
-                          ok: false,
-                          message:
-                            result?.error ||
-                            (isEn
-                              ? 'Could not save review right now.'
-                              : 'No se pudo guardar la reseña en este momento.'),
-                        });
                       }
                     }}
                   >
                     <Text style={styles.publishReviewText}>
                       {submittingReview
-                        ? isEn
-                          ? 'Saving...'
-                          : 'Guardando...'
+                        ? '...'
                         : isEn
-                        ? 'Publish Review'
-                        : 'Publicar Reseña'}
+                        ? 'Publish'
+                        : 'Publicar'}
                     </Text>
                   </Pressable>
                 </View>
-              ) : null}
-
-              {!!reviewStatus && (
-                <Text
-                  style={[
-                    styles.ratedHint,
-                    {
-                      color: reviewStatus.ok ? C.primaryLight : '#E11D48',
-                    },
-                  ]}
-                >
-                  {reviewStatus.message}
-                </Text>
               )}
 
-              {reviews.length === 0 && (
-                <View
-                  style={[
-                    styles.reviewCard,
-                    { backgroundColor: C.cardAlt, borderColor: C.border },
-                  ]}
-                >
-                  <Text style={[styles.reviewBody, { color: C.textSecondary }]}>
-                    {isEn
-                      ? 'No reviews yet. Tap the stars above to be the first to rate this place!'
-                      : 'Aún no hay reseñas escritas. ¡Toca las estrellas arriba para ser el primero en calificar este destino!'}
-                  </Text>
-                </View>
+              {!!reviewStatus && (
+                <Text style={{ color: C.primaryLight, fontSize: 12.5, fontWeight: '700' }}>
+                  {reviewStatus.message}
+                </Text>
               )}
 
               {reviews.map((rev, idx) => (
@@ -681,14 +504,11 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
                     <Text style={[styles.reviewAuthor, { color: C.text }]}>
                       {rev.autor}
                     </Text>
-                    <Text style={[styles.reviewDate, { color: C.textMuted }]}>
-                      {rev.fecha}
-                    </Text>
-                  </View>
-                  <View style={styles.reviewStarsRow}>
-                    {Array.from({ length: rev.rating || 5 }).map((_, i) => (
-                      <Ionicons key={i} name="star" size={12} color="#F5A623" />
-                    ))}
+                    <View style={styles.reviewStarsRow}>
+                      {Array.from({ length: rev.rating || 5 }).map((_, i) => (
+                        <Ionicons key={i} name="star" size={12} color="#F5A623" />
+                      ))}
+                    </View>
                   </View>
                   <Text style={[styles.reviewBody, { color: C.textSecondary }]}>
                     {rev.comentario}
@@ -700,7 +520,7 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
         </View>
       </ScrollView>
 
-      {/* Sticky Bottom Bar */}
+      {/* Barra inferior */}
       <View
         style={[
           styles.bottomBar,
@@ -714,20 +534,19 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
         <Pressable
           style={[
             styles.saveBottomBtn,
-            saved
-              ? {
-                  backgroundColor: darkMode ? '#33151E' : '#FFF1F2',
-                  borderColor: darkMode ? '#7F1D1D' : '#FECDD3',
-                }
-              : {
-                  backgroundColor: C.cardAlt,
-                  borderColor: C.border,
-                },
+            {
+              backgroundColor: saved
+                ? darkMode
+                  ? '#33151E'
+                  : '#FFF1F2'
+                : C.cardAlt,
+              borderColor: saved ? '#FECDD3' : C.border,
+            },
           ]}
           onPress={() => toggleSaved(place.id)}
         >
           <Ionicons
-            name={saved ? 'bookmark' : 'bookmark-outline'}
+            name={saved ? 'heart' : 'heart-outline'}
             size={18}
             color={saved ? '#E11D48' : C.textSecondary}
           />
@@ -751,19 +570,13 @@ export default function PlaceDetailScreen({ place: placeProp, lugar, onBack }) {
           style={styles.mapsBottomBtn}
           onPress={() => openGoogleMapsLocation(place)}
         >
-          <Ionicons name="paper-plane-outline" size={17} color="#FFFFFF" />
-          <Text style={styles.mapsBottomText}>
-            {isEn ? 'Open in Google Maps' : 'Abrir en Google Maps'}
-          </Text>
+          <Ionicons name="navigate-outline" size={17} color="#FFFFFF" />
+          <Text style={styles.mapsBottomText}>Google Maps</Text>
         </Pressable>
       </View>
     </View>
   );
 }
-
-const COLORS_FALLBACK = {
-  primary: '#0F5C41',
-};
 
 const styles = StyleSheet.create({
   container: {
@@ -773,12 +586,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: 20,
   },
   heroWrap: {
     position: 'relative',
     width: '100%',
     backgroundColor: '#0A2E20',
+    overflow: 'hidden',
   },
   heroImage: {
     position: 'absolute',
@@ -789,200 +603,119 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  heroTopScrim: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 90,
-    backgroundColor: 'rgba(0, 0, 0, 0.24)',
-  },
   heroBottomScrim: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: 135,
-    backgroundColor: 'rgba(7, 23, 17, 0.56)',
+    height: '65%',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   heroTopBar: {
-    paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingHorizontal: 16,
   },
   heroTopRight: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   circleBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(17, 24, 39, 0.52)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(17, 24, 39, 0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroBottom: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 16,
-  },
-  pillRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+  titleSectionClean: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
   },
   categoryPill: {
-    backgroundColor: '#F5A623',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    alignSelf: 'flex-start',
     borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginBottom: 6,
   },
   categoryPillText: {
-    color: '#111827',
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: '800',
+    textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  featuredPill: {
-    backgroundColor: '#0F5C41',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  featuredPillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
   heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
-    lineHeight: 27,
+    fontSize: 21,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
   metricsStrip: {
     flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
     borderBottomWidth: 1,
   },
   metricCard: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+    paddingVertical: 8,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   metricValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  metricValueAmber: {
-    color: '#D97706',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  metricValueGreen: {
-    fontSize: 12.5,
-    fontWeight: '800',
-  },
-  metricValueDark: {
+  metricValue: {
     fontSize: 13,
     fontWeight: '800',
   },
   metricLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     marginTop: 2,
-    fontWeight: '500',
   },
   tabsBar: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    paddingHorizontal: 10,
+    paddingHorizontal: 16,
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 13,
+    paddingVertical: 12,
     alignItems: 'center',
-    borderBottomWidth: 2.5,
-    borderBottomColor: 'transparent',
   },
   tabBtnText: {
     fontSize: 13,
-    fontWeight: '600',
-  },
-  tabBtnTextActive: {
-    fontWeight: '800',
+    fontWeight: '700',
   },
   tabBody: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-  },
-  descText: {
-    fontSize: 14.5,
-    lineHeight: 22,
-  },
-  estimateCard: {
-    marginTop: 18,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  estimateIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  estimateTextCol: {
-    flex: 1,
-  },
-  estimateTitle: {
-    fontSize: 13.5,
-    fontWeight: '800',
-  },
-  estimateSub: {
-    fontSize: 12.5,
-    marginTop: 2,
-  },
-  extraCard: {
-    marginTop: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-  },
-  extraTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 6,
-  },
-  extraBody: {
-    fontSize: 13.5,
-    lineHeight: 20,
-  },
-  scheduleNote: {
-    marginTop: 8,
-    fontSize: 12.5,
-    fontWeight: '700',
+    padding: 18,
   },
   sectionGap: {
     gap: 12,
   },
-  routeHeader: {
+  descText: {
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  infoBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    gap: 10,
+  },
+  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 9,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
   },
   mapFrameWrap: {
     height: 220,
@@ -992,108 +725,65 @@ const styles = StyleSheet.create({
   },
   mapWebView: {
     flex: 1,
-    backgroundColor: 'transparent',
   },
   routeBtn: {
+    height: 44,
+    borderRadius: 12,
     backgroundColor: '#0F5C41',
-    borderRadius: 14,
-    paddingVertical: 13,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 7,
   },
   routeBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '800',
-  },
-  tipRowCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  tipIconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tipContent: {
-    flex: 1,
-  },
-  tipHeading: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 3,
-  },
-  tipCopy: {
-    fontSize: 13,
-    lineHeight: 19,
   },
   reviewSummaryCard: {
     borderRadius: 14,
     borderWidth: 1,
     padding: 14,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   reviewScoreBig: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
-  },
-  reviewCountText: {
-    fontSize: 12,
   },
   starsTapRow: {
     flexDirection: 'row',
-    gap: 4,
-  },
-  ratedHint: {
-    fontSize: 12.5,
-    fontWeight: '700',
+    gap: 6,
   },
   reviewFormCard: {
     borderRadius: 14,
     borderWidth: 1,
     padding: 12,
-    gap: 10,
-  },
-  reviewFormHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  charCount: {
-    fontSize: 11.5,
-    fontWeight: '600',
+    gap: 8,
   },
   nameInput: {
     borderWidth: 1,
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     fontSize: 13,
   },
   reviewInput: {
     borderWidth: 1,
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 62,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minHeight: 56,
     fontSize: 13,
     textAlignVertical: 'top',
   },
   publishReviewBtn: {
     backgroundColor: '#0F5C41',
     borderRadius: 10,
-    paddingVertical: 10,
+    height: 38,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   publishReviewText: {
     color: '#FFFFFF',
@@ -1101,66 +791,62 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   reviewCard: {
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    padding: 14,
+    padding: 12,
   },
   reviewTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
   },
   reviewAuthor: {
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: '800',
-  },
-  reviewDate: {
-    fontSize: 11.5,
   },
   reviewStarsRow: {
     flexDirection: 'row',
     gap: 2,
-    marginTop: 4,
-    marginBottom: 6,
   },
   reviewBody: {
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
   bottomBar: {
     flexDirection: 'row',
-    gap: 12,
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 10,
     borderTopWidth: 1,
+    gap: 10,
   },
   saveBottomBtn: {
-    borderRadius: 14,
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 18,
-    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  saveBottomText: {
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
+  mapsBottomBtn: {
+    flex: 1.5,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#0F5C41',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
   },
-  saveBottomText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  mapsBottomBtn: {
-    flex: 1,
-    backgroundColor: '#0F5C41',
-    borderRadius: 14,
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
   mapsBottomText: {
     color: '#FFFFFF',
-    fontSize: 14.5,
+    fontSize: 13.5,
     fontWeight: '800',
   },
 });

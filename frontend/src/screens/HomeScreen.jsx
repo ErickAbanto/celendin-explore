@@ -1,9 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Dimensions,
+  Easing,
   Image,
   Modal,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -15,32 +18,101 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/theme';
+import { COLORS, getColors } from '../constants/theme';
 import {
   getPlaceImageSource,
+  getStarIconNames,
   openGoogleMapsRoute,
 } from '../constants/placesCatalog';
 import { useSavedPlaces } from '../context/SavedPlacesContext';
+import { localizeEmergency, localizePlace, tr } from '../constants/i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const SAVED_CARD_WIDTH = Math.min(SCREEN_WIDTH - 40, 380);
+const SAVED_CARD_WIDTH = Math.min(SCREEN_WIDTH - 36, 370);
 const SAVED_CARD_GAP = 12;
+
+function describeWeatherCode(code) {
+  if (code === 0) return { desc: 'Soleado', icon: 'sunny-outline' };
+  if (code === 1 || code === 2)
+    return { desc: 'Soleado', icon: 'partly-sunny-outline' };
+  if (code === 3 || code === 45 || code === 48)
+    return { desc: 'Nublado', icon: 'cloud-outline' };
+  if (code >= 51 && code <= 67)
+    return { desc: 'Lluvia ligera', icon: 'rainy-outline' };
+  if (code >= 80 && code <= 82)
+    return { desc: 'Lluvia', icon: 'rainy-outline' };
+  if (code >= 95) return { desc: 'Tormenta', icon: 'thunderstorm-outline' };
+  return { desc: 'Soleado', icon: 'sunny-outline' };
+}
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const {
     places,
     savedPlaces,
+    emergencyNumbers,
     refreshing,
     syncPlaces,
     toggleSaved,
     isSaved,
+    openAdminPanel,
+    darkMode,
+    language,
   } = useSavedPlaces();
+
+  const C = getColors(darkMode);
+  const isEn = language === 'en';
 
   const [selectedCategory, setSelectedCategory] = useState('Todo');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSavedIndex, setActiveSavedIndex] = useState(0);
-  const [infoModal, setInfoModal] = useState(null); // 'safety' | 'alerts' | 'weather' | null
+  const [infoModal, setInfoModal] = useState(null); // 'safety' | 'weather' | null
+  const [liveWeather, setLiveWeather] = useState({
+    temp: 19,
+    desc: 'Soleado',
+    icon: 'sunny-outline',
+    windspeed: 10,
+  });
+
+  const secretTapRef = useRef({ count: 0, lastTap: 0 });
+  const savedTranslateX = useRef(new Animated.Value(0)).current;
+  const savedStepRef = useRef(0);
+
+  const handleSecretTap = () => {
+    const now = Date.now();
+    const diff = now - secretTapRef.current.lastTap;
+    const nextCount = diff < 750 ? secretTapRef.current.count + 1 : 1;
+    if (nextCount >= 10) {
+      secretTapRef.current = { count: 0, lastTap: 0 };
+      openAdminPanel('inicio');
+    } else {
+      secretTapRef.current = { count: nextCount, lastTap: now };
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=-6.8659&longitude=-78.1449&current_weather=true&timezone=America%2FLima'
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data?.current_weather) {
+          const cw = data.current_weather;
+          const mapped = describeWeatherCode(Number(cw.weathercode));
+          setLiveWeather({
+            temp: Math.round(Number(cw.temperature)),
+            desc: mapped.desc,
+            icon: mapped.icon,
+            windspeed: Math.round(Number(cw.windspeed) || 0),
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const topInset = Math.max(
     insets.top,
@@ -49,62 +121,92 @@ export default function HomeScreen({ navigation }) {
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
-  const matchesFilter = (item, ignoreSavedFilter = false) => {
-    const matchesSearch =
-      !normalizedQuery ||
-      item.nombre.toLowerCase().includes(normalizedQuery) ||
-      item.desc.toLowerCase().includes(normalizedQuery) ||
-      item.categoria.toLowerCase().includes(normalizedQuery) ||
-      item.ubicacion.toLowerCase().includes(normalizedQuery);
+  const localizedPlaces = useMemo(
+    () => places.map((p) => localizePlace(p, language)),
+    [places, language]
+  );
+  const localizedSaved = useMemo(
+    () => savedPlaces.map((p) => localizePlace(p, language)),
+    [savedPlaces, language]
+  );
 
-    if (!matchesSearch) return false;
-    if (ignoreSavedFilter) return true;
+  const textMatches = (item) => {
+    if (!normalizedQuery) return true;
+    return [item.nombre, item.desc, item.categoria, item.ubicacion].some((v) =>
+      String(v || '').toLowerCase().includes(normalizedQuery)
+    );
+  };
+
+  const matchesFilter = (item) => {
+    if (!textMatches(item)) return false;
     if (selectedCategory === 'Todo') return true;
     if (selectedCategory === 'Guardados') return isSaved(item.id);
-    return item.categoriaFiltro === selectedCategory || item.categoria === selectedCategory;
+    return (
+      item.categoriaFiltro === selectedCategory ||
+      item.categoriaRaw === selectedCategory
+    );
   };
 
   const filteredSavedPlaces = useMemo(
-    () =>
-      savedPlaces.filter((item) => {
-        if (!normalizedQuery) return true;
-        return (
-          item.nombre.toLowerCase().includes(normalizedQuery) ||
-          item.desc.toLowerCase().includes(normalizedQuery) ||
-          item.categoria.toLowerCase().includes(normalizedQuery)
-        );
-      }),
-    [savedPlaces, normalizedQuery]
+    () => localizedSaved.filter((item) => textMatches(item)),
+    [localizedSaved, normalizedQuery]
   );
 
   const featuredPlaces = useMemo(
-    () => places.filter((item) => matchesFilter(item)),
-    [places, selectedCategory, normalizedQuery, savedPlaces]
+    () => localizedPlaces.filter((item) => matchesFilter(item)),
+    [localizedPlaces, selectedCategory, normalizedQuery, savedPlaces]
   );
 
-  const todayExperiences = useMemo(() => {
-    const base = places.filter((item) => item.esExperienciaHoy);
-    const list = base.length ? base : places.slice(0, 3);
-    return list.filter((item) => matchesFilter(item));
-  }, [places, selectedCategory, normalizedQuery, savedPlaces]);
-
-  const openPlaceDetail = (item) => {
-    navigation.navigate('Lugares', { lugarElegido: item.nombre });
-  };
-
   const categories = [
-    { key: 'Todo', label: 'Todo' },
-    { key: 'Guardados', label: `Guardados (${savedPlaces.length})`, hasHeart: true },
-    { key: 'Naturaleza', label: 'Naturaleza' },
-    { key: 'Cultura', label: 'Cultura' },
+    { key: 'Todo', label: isEn ? 'All' : 'Todo' },
+    { key: 'Guardados', label: isEn ? 'Saved' : 'Guardados', hasHeart: true },
+    { key: 'Naturaleza', label: isEn ? 'Nature' : 'Naturaleza' },
+    { key: 'Cultura', label: isEn ? 'Culture' : 'Cultura' },
   ];
 
-  const showSavedSection =
-    (selectedCategory === 'Todo' || selectedCategory === 'Guardados') &&
-    filteredSavedPlaces.length > 0;
+  const showSavedSection = filteredSavedPlaces.length > 0;
+
+  const savedLoopItems = useMemo(() => {
+    if (filteredSavedPlaces.length <= 1) return filteredSavedPlaces;
+    return [...filteredSavedPlaces, filteredSavedPlaces[0]];
+  }, [filteredSavedPlaces]);
+
+  // Auto-carrusel continuo hacia adelante cada 4 segundos (sin rebobinar hacia atrás)
+  useEffect(() => {
+    const total = filteredSavedPlaces.length;
+    savedStepRef.current = 0;
+    savedTranslateX.setValue(0);
+    setActiveSavedIndex(0);
+
+    if (!showSavedSection || total <= 1) return undefined;
+
+    const stepWidth = SAVED_CARD_WIDTH + SAVED_CARD_GAP;
+
+    const interval = setInterval(() => {
+      const nextStep = savedStepRef.current + 1;
+      savedStepRef.current = nextStep;
+      setActiveSavedIndex(nextStep % total);
+
+      Animated.timing(savedTranslateX, {
+        toValue: -nextStep * stepWidth,
+        duration: 850,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && nextStep >= total) {
+          savedStepRef.current = 0;
+          savedTranslateX.setValue(0);
+        }
+      });
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [showSavedSection, filteredSavedPlaces]);
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: C.background }]}>
+      <View style={[styles.notchBar, { height: topInset }]} />
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -118,16 +220,22 @@ export default function HomeScreen({ navigation }) {
           />
         }
       >
-        {/* Cabecera verde esmeralda */}
-        <View style={[styles.header, { paddingTop: topInset + 10 }]}>
+        {/* Cabecera verde esmeralda refinada */}
+        <View style={styles.header}>
           <View style={styles.headerTopRow}>
-            <View style={styles.greetingCol}>
+            <Pressable
+              style={styles.greetingCol}
+              onPress={handleSecretTap}
+              hitSlop={8}
+            >
               <View style={styles.locationRow}>
-                <Ionicons name="location-outline" size={14} color="#D9E86F" />
+                <Ionicons name="location" size={13} color="#D9E86F" />
                 <Text style={styles.locationText}>Celendín, Cajamarca</Text>
               </View>
-              <Text style={styles.greetingTitle}>{'¡Hola,\nExplorador!'}</Text>
-            </View>
+              <Text style={styles.greetingTitle}>
+                {isEn ? 'Explore Celendín' : 'Explora Celendín'}
+              </Text>
+            </Pressable>
 
             <View style={styles.headerActions}>
               <TouchableOpacity
@@ -135,10 +243,12 @@ export default function HomeScreen({ navigation }) {
                 activeOpacity={0.85}
                 onPress={() => setInfoModal('weather')}
               >
-                <Ionicons name="sunny-outline" size={18} color="#FBBF24" />
+                <Ionicons name={liveWeather.icon} size={17} color="#FBBF24" />
                 <View style={styles.weatherTextWrap}>
-                  <Text style={styles.weatherTemp}>19°C</Text>
-                  <Text style={styles.weatherDesc}>Soleado</Text>
+                  <Text style={styles.weatherTemp}>{liveWeather.temp}°C</Text>
+                  <Text style={styles.weatherDesc}>
+                    {tr(liveWeather.desc, language)}
+                  </Text>
                 </View>
               </TouchableOpacity>
 
@@ -147,26 +257,30 @@ export default function HomeScreen({ navigation }) {
                 activeOpacity={0.85}
                 onPress={() => setInfoModal('safety')}
               >
-                <Ionicons name="shield-checkmark-outline" size={18} color="#E5E7EB" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.circleActionBtn}
-                activeOpacity={0.85}
-                onPress={() => setInfoModal('alerts')}
-              >
-                <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
-                <View style={styles.notifDot} />
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={17}
+                  color="#E5E7EB"
+                />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Barra de búsqueda */}
-          <View style={styles.searchBar}>
-            <Ionicons name="search-outline" size={19} color="#9CA3AF" />
+          {/* Buscador limpio */}
+          <View
+            style={[
+              styles.searchBar,
+              { backgroundColor: darkMode ? C.cardAlt : '#FFFFFF' },
+            ]}
+          >
+            <Ionicons name="search-outline" size={18} color="#9CA3AF" />
             <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar cataratas, sombrero, chocolate..."
+              style={[styles.searchInput, { color: C.text }]}
+              placeholder={
+                isEn
+                  ? 'Search waterfalls, hats, chocolate...'
+                  : 'Buscar cataratas, sombrero, chocolate...'
+              }
               placeholderTextColor="#9CA3AF"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -180,7 +294,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Chips de filtro horizontal */}
+        {/* Chips de filtro equilibrados */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -191,19 +305,30 @@ export default function HomeScreen({ navigation }) {
             return (
               <TouchableOpacity
                 key={cat.key}
-                style={[styles.chip, active && styles.chipActive]}
+                style={[
+                  styles.chip,
+                  active
+                    ? styles.chipActive
+                    : { backgroundColor: C.card, borderColor: C.border },
+                ]}
                 activeOpacity={0.85}
                 onPress={() => setSelectedCategory(cat.key)}
               >
                 {cat.hasHeart && (
                   <Ionicons
                     name="heart"
-                    size={13}
+                    size={12}
                     color={active ? '#FFE4E6' : COLORS.pink}
                     style={styles.chipHeart}
                   />
                 )}
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: active ? '#FFFFFF' : C.text },
+                    active && styles.chipTextActive,
+                  ]}
+                >
                   {cat.label}
                 </Text>
               </TouchableOpacity>
@@ -211,16 +336,13 @@ export default function HomeScreen({ navigation }) {
           })}
         </ScrollView>
 
-        {/* Sección: Mis Lugares Guardados */}
+        {/* Sección: Mis Lugares Favoritos (carrusel 100% informativo sin botones ni clics) */}
         {showSavedSection && (
           <View style={styles.sectionBlock}>
             <View style={styles.savedSectionHeader}>
-              <View style={styles.savedTitleRow}>
-                <Ionicons name="heart" size={15} color={COLORS.pink} />
-                <Text style={styles.savedTitleText}>
-                  MIS LUGARES GUARDADOS ({filteredSavedPlaces.length})
-                </Text>
-              </View>
+              <Text style={[styles.sectionTitleText, { color: C.text }]}>
+                {isEn ? 'My Favorite Places' : 'Mis Lugares Favoritos'}
+              </Text>
               <View style={styles.dotsRow}>
                 {filteredSavedPlaces.map((item, idx) => (
                   <View
@@ -234,115 +356,89 @@ export default function HomeScreen({ navigation }) {
               </View>
             </View>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={SAVED_CARD_WIDTH + SAVED_CARD_GAP}
-              decelerationRate="fast"
-              contentContainerStyle={styles.savedCarouselContent}
-              onMomentumScrollEnd={(e) => {
-                const idx = Math.round(
-                  e.nativeEvent.contentOffset.x /
-                    (SAVED_CARD_WIDTH + SAVED_CARD_GAP)
-                );
-                setActiveSavedIndex(
-                  Math.max(0, Math.min(idx, filteredSavedPlaces.length - 1))
-                );
-              }}
-            >
-              {filteredSavedPlaces.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.savedHeroCard}
-                  activeOpacity={0.92}
-                  onPress={() => openPlaceDetail(item)}
-                >
-                  <Image
-                    source={getPlaceImageSource(item)}
-                    style={styles.savedHeroImg}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.savedHeroGradient} pointerEvents="none" />
-                  <View style={styles.bottomScrim} pointerEvents="none" />
+            <View style={styles.savedViewport} pointerEvents="none">
+              <Animated.View
+                style={[
+                  styles.savedCarouselTrack,
+                  { transform: [{ translateX: savedTranslateX }] },
+                ]}
+              >
+                {savedLoopItems.map((item, idx) => (
+                  <View
+                    key={`${item.id}-loop-${idx}`}
+                    style={[
+                      styles.savedHeroCard,
+                      { backgroundColor: C.card, borderColor: C.border },
+                    ]}
+                  >
+                    <Image
+                      source={getPlaceImageSource(item)}
+                      style={styles.savedThumbImg}
+                      resizeMode="cover"
+                    />
 
-                  <View style={styles.savedCardTop}>
-                    <View style={styles.savedPillsRow}>
-                      <View style={styles.savedBadgePink}>
-                        <Ionicons name="heart" size={10} color="#FFF" />
-                        <Text style={styles.savedBadgePinkText}>GUARDADO</Text>
-                      </View>
-                      <View style={styles.savedBadgeAmber}>
-                        <Text style={styles.savedBadgeAmberText}>
+                    <View style={styles.savedCardContent}>
+                      <View style={styles.savedTopMetaRow}>
+                        <Text
+                          style={[
+                            styles.savedCatLabel,
+                            { color: C.primaryLight },
+                          ]}
+                        >
                           {item.categoria}
                         </Text>
+                        <Ionicons name="heart" size={16} color="#EC2D5B" />
                       </View>
-                    </View>
 
-                    <TouchableOpacity
-                      style={styles.heartCircleBtn}
-                      activeOpacity={0.8}
-                      onPress={() => toggleSaved(item.id)}
-                    >
-                      <Ionicons name="heart" size={17} color="#EC2D5B" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.savedCardBottom}>
-                    <View style={styles.savedBottomTextCol}>
-                      <Text style={styles.savedCardName} numberOfLines={1}>
+                      <Text
+                        style={[styles.savedCardTitle, { color: C.text }]}
+                        numberOfLines={1}
+                      >
                         {item.nombre}
                       </Text>
-                      <View style={styles.savedMetaRow}>
-                        <Ionicons
-                          name="location-outline"
-                          size={13}
-                          color={COLORS.accentLight}
-                        />
-                        <Text style={styles.savedMetaText}>
-                          {item.distanciaCorta} • {item.precioTexto}
-                        </Text>
-                      </View>
-                    </View>
 
-                    <TouchableOpacity
-                      style={styles.mapsPillBtn}
-                      activeOpacity={0.85}
-                      onPress={() => openGoogleMapsRoute(item)}
-                    >
-                      <Ionicons name="paper-plane-outline" size={13} color="#FFF" />
-                      <Text style={styles.mapsPillBtnText}>Ir con Maps</Text>
-                    </TouchableOpacity>
+                      <Text
+                        style={[
+                          styles.savedDistText,
+                          { color: C.textSecondary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.direccionCorta || item.ubicacion} •{' '}
+                        {item.distanciaCorta}
+                      </Text>
+                    </View>
                   </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                ))}
+              </Animated.View>
+            </View>
           </View>
         )}
 
-        {/* Sección: Destacados de Celendín */}
-        {featuredPlaces.length > 0 && (
-          <View style={styles.sectionBlock}>
+        {/* Sección: Destacados de Celendín (misma estructura para Todo, Guardados, Naturaleza y Cultura) */}
+        {featuredPlaces.length > 0 ? (
+          <View key="destacados-static-only" style={styles.sectionBlock}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeading}>
-                {'Destacados de\nCelendín'}
+              <Text style={[styles.sectionTitleText, { color: C.text }]}>
+                {isEn ? 'Featured in Celendín' : 'Destacados de Celendín'}
               </Text>
               <TouchableOpacity
                 style={styles.seeAllBtn}
                 onPress={() => navigation.navigate('Lugares')}
               >
-                <Text style={styles.seeAllText}>
-                  {'Ver todos con Google\nMaps'}
+                <Text style={[styles.seeAllText, { color: C.primaryLight }]}>
+                  {isEn ? 'See all' : 'Ver todos'}
                 </Text>
                 <Ionicons
                   name="chevron-forward"
-                  size={15}
-                  color={COLORS.primaryLight}
-                  style={styles.seeAllArrow}
+                  size={14}
+                  color={C.primaryLight}
                 />
               </TouchableOpacity>
             </View>
 
             <ScrollView
+              key="destacados-carousel-static"
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.featuredCarouselContent}
@@ -350,152 +446,137 @@ export default function HomeScreen({ navigation }) {
               {featuredPlaces.map((item) => {
                 const saved = isSaved(item.id);
                 return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.featuredCard}
-                    activeOpacity={0.9}
-                    onPress={() => openPlaceDetail(item)}
+                  <View
+                    key={`static-card-${item.id}`}
+                    style={[
+                      styles.featuredCard,
+                      { backgroundColor: C.card, borderColor: C.border },
+                    ]}
                   >
+                    {/* Contenedor de imagen aislado arriba con overflow hidden */}
                     <View style={styles.featuredImgBox}>
                       <Image
                         source={getPlaceImageSource(item)}
                         style={styles.featuredImg}
                         resizeMode="cover"
                       />
-                      <View style={styles.featuredImgGradient} pointerEvents="none" />
-                      <View style={styles.bottomScrim} pointerEvents="none" />
+                      <TouchableOpacity
+                        style={styles.smallHeartBtn}
+                        activeOpacity={0.8}
+                        onPress={() => toggleSaved(item.id)}
+                        hitSlop={8}
+                      >
+                        <Ionicons
+                          name={saved ? 'heart' : 'heart-outline'}
+                          size={15}
+                          color={saved ? '#EC2D5B' : '#FFFFFF'}
+                        />
+                      </TouchableOpacity>
+                    </View>
 
-                      <View style={styles.featuredImgTop}>
-                        <View style={styles.amberTag}>
-                          <Text style={styles.amberTagText} numberOfLines={1}>
-                            {item.etiquetaDestacado || item.categoria}
+                    {/* Contenedor sólido aparte al pie de la imagen */}
+                    <View
+                      style={[
+                        styles.featuredCardBody,
+                        { backgroundColor: C.card },
+                      ]}
+                    >
+                      <View style={styles.featuredMetaTopRow}>
+                        <View
+                          style={[
+                            styles.catPillClean,
+                            { backgroundColor: C.primarySoft },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.featuredCatText,
+                              { color: C.primaryLight },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {item.categoria}
                           </Text>
                         </View>
-                        <TouchableOpacity
-                          style={styles.smallHeartBtn}
-                          activeOpacity={0.8}
-                          onPress={() => toggleSaved(item.id)}
-                        >
-                          <Ionicons
-                            name={saved ? 'heart' : 'heart-outline'}
-                            size={15}
-                            color={saved ? '#EC2D5B' : '#FFFFFF'}
-                          />
-                        </TouchableOpacity>
+                        <View style={styles.ratingRow}>
+                          {getStarIconNames(item.rating).map((iconName, sIdx) => (
+                            <Ionicons
+                              key={sIdx}
+                              name={iconName}
+                              size={11}
+                              color={
+                                Number(item.rating || 0) > 0
+                                  ? '#F59E0B'
+                                  : C.textMuted
+                              }
+                            />
+                          ))}
+                          <Text
+                            style={[styles.ratingText, { color: C.text }]}
+                          >
+                            {item.rating || '0.0'}
+                          </Text>
+                        </View>
                       </View>
 
-                      <View style={styles.featuredImgBottom}>
+                      <Text
+                        style={[styles.featuredTitle, { color: C.text }]}
+                        numberOfLines={1}
+                      >
+                        {item.nombre}
+                      </Text>
+
+                      <View style={styles.featuredFooterMeta}>
                         <View style={styles.featuredDistRow}>
                           <Ionicons
                             name="location-outline"
                             size={12}
-                            color={COLORS.accentLight}
+                            color={C.primaryLight}
                           />
-                          <Text style={styles.featuredDistText} numberOfLines={1}>
+                          <Text
+                            style={[
+                              styles.featuredDistText,
+                              { color: C.textSecondary },
+                            ]}
+                            numberOfLines={1}
+                          >
                             {item.distanciaCorta}
                           </Text>
                         </View>
-                        <View style={styles.ratingRow}>
-                          <Ionicons name="star" size={12} color="#FBBF24" />
-                          <Text style={styles.ratingText}>{item.rating}</Text>
-                        </View>
+                        <Text style={styles.featuredPriceText}>
+                          {item.precioTexto}
+                        </Text>
                       </View>
                     </View>
-
-                    <View style={styles.featuredCardBody}>
-                      <Text style={styles.featuredMetaUpper} numberOfLines={1}>
-                        {item.categoria.toUpperCase()} • {item.precioTexto.toUpperCase()}
-                      </Text>
-                      <Text style={styles.featuredTitle} numberOfLines={1}>
-                        {item.nombre}
-                      </Text>
-                      <Text style={styles.featuredDesc} numberOfLines={2}>
-                        {item.desc}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                  </View>
                 );
               })}
             </ScrollView>
           </View>
-        )}
-
-        {/* Banner destacado: Orgullo Shilico */}
-        {selectedCategory !== 'Guardados' && !normalizedQuery && (
-          <TouchableOpacity
-            style={styles.promoBanner}
-            activeOpacity={0.92}
-            onPress={() => navigation.navigate('Directorio')}
+        ) : (
+          <View
+            style={[
+              styles.emptyBox,
+              { backgroundColor: C.card, borderColor: C.border },
+            ]}
           >
-            <View style={styles.promoSparkle} pointerEvents="none">
-              <Ionicons
-                name="sparkles-outline"
-                size={84}
-                color="rgba(255, 255, 255, 0.25)"
-              />
-            </View>
-
-            <View style={styles.promoBadge}>
-              <Ionicons name="ribbon-outline" size={12} color="#FBBF24" />
-              <Text style={styles.promoBadgeText}>ORGULLO SHILICO</Text>
-            </View>
-
-            <Text style={styles.promoTitle}>
-              Ruta del Sombrero de Paja Toquilla
-            </Text>
-            <Text style={styles.promoDesc}>
-              Visita a los maestros artesanos y conoce cómo se teje el sombrero más fino del norte peruano.
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Sección: Experiencias Imperdibles Hoy */}
-        {todayExperiences.length > 0 && (
-          <View style={styles.sectionBlock}>
-            <Text style={styles.experiencesHeading}>
-              Experiencias Imperdibles Hoy
-            </Text>
-
-            {todayExperiences.map((item) => (
-              <TouchableOpacity
-                key={`exp-${item.id}`}
-                style={styles.expCard}
-                activeOpacity={0.88}
-                onPress={() => openPlaceDetail(item)}
-              >
-                <Image
-                  source={getPlaceImageSource(item)}
-                  style={styles.expThumb}
-                  resizeMode="cover"
-                />
-                <View style={styles.expBody}>
-                  <Text style={styles.expMetaTop} numberOfLines={1}>
-                    <Text style={styles.expCategory}>{item.categoria}</Text>
-                    <Text style={styles.expDot}> • </Text>
-                    <Text style={styles.expDist}>{item.distanciaCorta}</Text>
-                  </Text>
-                  <Text style={styles.expTitle} numberOfLines={1}>
-                    {item.nombre}
-                  </Text>
-                  <View style={styles.expRatingRow}>
-                    <Ionicons name="star" size={13} color="#F59E0B" />
-                    <Text style={styles.expRatingNum}>{item.rating}</Text>
-                    <Text style={styles.expPriceText}> • {item.precioTexto}</Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Estado vacío si la búsqueda no encuentra resultados */}
-        {featuredPlaces.length === 0 && (
-          <View style={styles.emptyBox}>
-            <Ionicons name="compass-outline" size={38} color={COLORS.primary} />
-            <Text style={styles.emptyTitle}>Sin resultados</Text>
-            <Text style={styles.emptyDesc}>
-              No encontramos destinos que coincidan con tu filtro o búsqueda actual.
+            <Ionicons
+              name={
+                selectedCategory === 'Guardados'
+                  ? 'heart-outline'
+                  : 'compass-outline'
+              }
+              size={34}
+              color={C.primaryLight}
+            />
+            <Text style={[styles.emptyTitle, { color: C.text }]}>
+              {selectedCategory === 'Guardados'
+                ? isEn
+                  ? 'No saved places yet'
+                  : 'Aún no tienes lugares guardados'
+                : isEn
+                  ? 'No results'
+                  : 'Sin resultados'}
             </Text>
             <TouchableOpacity
               style={styles.clearFilterBtn}
@@ -504,13 +585,15 @@ export default function HomeScreen({ navigation }) {
                 setSelectedCategory('Todo');
               }}
             >
-              <Text style={styles.clearFilterText}>Mostrar todo Celendín</Text>
+              <Text style={styles.clearFilterText}>
+                {isEn ? 'Show all' : 'Mostrar todo'}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
       </ScrollView>
 
-      {/* Modal informativo para Clima, Seguridad y Novedades */}
+      {/* Modal informativo para Clima y Emergencias */}
       <Modal
         visible={infoModal !== null}
         transparent
@@ -518,37 +601,40 @@ export default function HomeScreen({ navigation }) {
         onRequestClose={() => setInfoModal(null)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <View
+            style={[
+              styles.modalCard,
+              { backgroundColor: C.card, borderColor: C.border },
+            ]}
+          >
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
+              <Text style={[styles.modalTitle, { color: C.text }]}>
                 {infoModal === 'weather'
-                  ? 'Clima en Celendín'
-                  : infoModal === 'safety'
-                  ? 'Seguridad y Asistencia'
-                  : 'Agenda y Novedades Shilicas'}
+                  ? isEn
+                    ? 'Weather in Celendín'
+                    : 'Clima en Celendín'
+                  : isEn
+                    ? 'Celendín Emergencies'
+                    : 'Emergencias Celendín'}
               </Text>
               <TouchableOpacity onPress={() => setInfoModal(null)}>
-                <Ionicons name="close" size={22} color="#6B7280" />
+                <Ionicons name="close" size={22} color={C.textSecondary} />
               </TouchableOpacity>
             </View>
 
             {infoModal === 'weather' && (
-              <Text style={styles.modalBody}>
-                Celendín ("El Cielo Azul del Edén") se encuentra a 2,625 m s.n.m. con clima templado seco entre 14 °C y 22 °C. Lleva bloqueador solar durante el día y abrigo ligero para el atardecer.
+              <Text style={[styles.modalBody, { color: C.textSecondary }]}>
+                {liveWeather.temp} °C • {tr(liveWeather.desc, language)} •{' '}
+                {isEn ? 'Wind' : 'Viento'} {liveWeather.windspeed} km/h.{'\n'}
+                {isEn ? 'Altitude: 2,625 m a.s.l.' : 'Altitud: 2,625 m s.n.m.'}
               </Text>
             )}
             {infoModal === 'safety' && (
-              <Text style={styles.modalBody}>
-                • Comisaría PNP Celendín: 105{'\n'}
-                • Emergencias Médicas / SAMU: 106{'\n'}
-                • Hospital de Apoyo Celendín: Jr. Dos de Mayo{'\n'}
-                • Todas las rutas principales cuentan con ficha y guía offline.
-              </Text>
-            )}
-            {infoModal === 'alerts' && (
-              <Text style={styles.modalBody}>
-                • Feria Dominical de Sombreros de Paja Toquilla: domingos desde las 7:00 am en las inmediaciones de la Plaza de Armas.{'\n'}
-                • Fiesta Patronal Virgen del Carmen: del 15 de julio al 4 de agosto.
+              <Text style={[styles.modalBody, { color: C.textSecondary }]}>
+                {emergencyNumbers
+                  .map((e) => localizeEmergency(e, language))
+                  .map((e) => `• ${e.titulo}: ${e.numero}`)
+                  .join('\n')}
               </Text>
             )}
 
@@ -556,7 +642,9 @@ export default function HomeScreen({ navigation }) {
               style={styles.modalCloseBtn}
               onPress={() => setInfoModal(null)}
             >
-              <Text style={styles.modalCloseBtnText}>Entendido</Text>
+              <Text style={styles.modalCloseBtnText}>
+                {isEn ? 'Close' : 'Cerrar'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -568,62 +656,65 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.background,
+  },
+  notchBar: {
+    backgroundColor: '#0F5C41',
+    width: '100%',
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 28,
+    paddingBottom: 24,
   },
   header: {
     backgroundColor: '#0F5C41',
+    paddingTop: 10,
     paddingHorizontal: 18,
-    paddingBottom: 20,
+    paddingBottom: 18,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
   headerTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   greetingCol: {
     flex: 1,
-    paddingRight: 10,
+    paddingRight: 8,
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   locationText: {
     color: '#D9E86F',
-    fontSize: 12.5,
+    fontSize: 12,
     fontWeight: '600',
-    marginLeft: 5,
+    marginLeft: 4,
   },
   greetingTitle: {
     color: '#FFFFFF',
-    fontSize: 27,
+    fontSize: 22,
     fontWeight: '800',
-    lineHeight: 31,
+    letterSpacing: -0.4,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 6,
   },
   weatherPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.13)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 18,
+    borderRadius: 16,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   weatherTextWrap: {
     marginLeft: 6,
@@ -635,73 +726,59 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   weatherDesc: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.82)',
     fontSize: 10,
     lineHeight: 12,
   },
   circleActionBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.13)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  notifDot: {
-    position: 'absolute',
-    top: 7,
-    right: 8,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FBBF24',
-    borderWidth: 1,
-    borderColor: '#0F5C41',
-  },
   searchBar: {
-    marginTop: 18,
-    height: 46,
+    marginTop: 14,
+    height: 44,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
   },
   searchInput: {
     flex: 1,
-    marginLeft: 10,
-    fontSize: 13.5,
-    color: COLORS.textMain,
+    marginLeft: 8,
+    fontSize: 13,
+    color: '#111827',
     paddingVertical: 0,
   },
   chipsRow: {
     paddingHorizontal: 18,
     paddingTop: 14,
-    paddingBottom: 6,
+    paddingBottom: 4,
     gap: 8,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
     borderRadius: 999,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
   },
   chipActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
   },
   chipHeart: {
-    marginRight: 6,
+    marginRight: 5,
   },
   chipText: {
-    color: '#374151',
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
   },
   chipTextActive: {
@@ -721,13 +798,18 @@ const styles = StyleSheet.create({
   savedTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
-  savedTitleText: {
-    marginLeft: 6,
-    color: '#D61F4D',
-    fontSize: 12.5,
+  sectionAccentBar: {
+    width: 4,
+    height: 17,
+    borderRadius: 2,
+    backgroundColor: '#0F5C41',
+  },
+  sectionTitleText: {
+    fontSize: 16.5,
     fontWeight: '800',
-    letterSpacing: 0.3,
+    letterSpacing: -0.3,
   },
   dotsRow: {
     flexDirection: 'row',
@@ -741,163 +823,126 @@ const styles = StyleSheet.create({
     backgroundColor: '#CBD5E1',
   },
   dotActive: {
-    width: 18,
-    backgroundColor: '#E11D48',
+    width: 16,
+    backgroundColor: '#0F5C41',
   },
-  savedCarouselContent: {
+  savedViewport: {
+    width: '100%',
+    overflow: 'hidden',
     paddingHorizontal: 18,
+  },
+  savedCarouselTrack: {
+    flexDirection: 'row',
     gap: SAVED_CARD_GAP,
   },
   savedHeroCard: {
     width: SAVED_CARD_WIDTH,
-    height: 176,
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#1F2937',
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  savedThumbImg: {
+    width: 84,
+    height: 84,
+    borderRadius: 14,
+    backgroundColor: '#E5E7EB',
+  },
+  savedCardContent: {
+    flex: 1,
     justifyContent: 'space-between',
-    padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  savedHeroImg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  savedHeroGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.28)',
-    backgroundImage:
-      'linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.34) 48%, rgba(0, 0, 0, 0.88) 100%)',
-  },
-  savedCardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  savedPillsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  savedBadgePink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EC2D5B',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
     gap: 4,
   },
-  savedBadgePinkText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  savedBadgeAmber: {
-    backgroundColor: '#F5B82E',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  savedBadgeAmberText: {
-    color: '#111827',
-    fontSize: 10.5,
-    fontWeight: '700',
-  },
-  heartCircleBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(17, 24, 39, 0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  savedCardBottom: {
+  savedTopMetaRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  savedBottomTextCol: {
-    flex: 1,
-    marginRight: 10,
+  savedCatLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
-  savedCardName: {
-    color: '#FFFFFF',
-    fontSize: 17,
+  savedCardTitle: {
+    fontSize: 15.5,
     fontWeight: '800',
   },
-  savedMetaRow: {
+  savedBottomActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    justifyContent: 'space-between',
+    marginTop: 2,
+    gap: 8,
   },
-  savedMetaText: {
-    color: '#F3F4F6',
+  savedDistText: {
+    flex: 1,
     fontSize: 12,
-    fontWeight: '500',
-    marginLeft: 4,
   },
   mapsPillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.primaryLight,
+    backgroundColor: '#0F5C41',
     borderRadius: 999,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 4,
   },
   mapsPillBtnText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
+  },
+  savedFullList: {
+    paddingHorizontal: 18,
+    gap: 14,
+  },
+  savedFullCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  savedFullImg: {
+    width: '100%',
+    height: 145,
+    backgroundColor: '#E5E7EB',
+  },
+  savedFullBody: {
+    padding: 14,
+  },
+  savedFullActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    gap: 8,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    marginBottom: 12,
-  },
-  sectionHeading: {
-    color: COLORS.textMain,
-    fontSize: 17.5,
-    fontWeight: '800',
-    lineHeight: 22,
+    marginBottom: 10,
   },
   seeAllBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 2,
   },
   seeAllText: {
-    color: COLORS.primaryLight,
     fontSize: 12.5,
-    fontWeight: '600',
-    textAlign: 'right',
-    lineHeight: 16,
-  },
-  seeAllArrow: {
-    marginLeft: 4,
+    fontWeight: '700',
   },
   featuredCarouselContent: {
     paddingHorizontal: 18,
     gap: 12,
   },
   featuredCard: {
-    width: 215,
-    backgroundColor: '#FFFFFF',
+    width: 232,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
@@ -906,55 +951,20 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   featuredImgBox: {
-    height: 126,
-    backgroundColor: '#111827',
-    justifyContent: 'space-between',
-    padding: 10,
+    width: '100%',
+    height: 132,
+    backgroundColor: '#E5E7EB',
+    position: 'relative',
     overflow: 'hidden',
   },
-  bottomScrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '52%',
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-  },
   featuredImg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  featuredImgGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.22)',
-    backgroundImage:
-      'linear-gradient(180deg, rgba(0, 0, 0, 0.06) 0%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0.72) 100%)',
-  },
-  featuredImgTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  amberTag: {
-    backgroundColor: '#F5B82E',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    maxWidth: 145,
-  },
-  amberTagText: {
-    color: '#111827',
-    fontSize: 10.5,
-    fontWeight: '800',
+    width: '100%',
+    height: 132,
   },
   smallHeartBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
     width: 30,
     height: 30,
     borderRadius: 15,
@@ -962,22 +972,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  featuredImgBottom: {
+  featuredCardBody: {
+    width: '100%',
+    padding: 13,
+  },
+  featuredMetaTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 6,
   },
-  featuredDistRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 6,
+  catPillClean: {
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
   },
-  featuredDistText: {
-    color: '#FFFFFF',
-    fontSize: 11.5,
-    fontWeight: '600',
-    marginLeft: 4,
+  featuredCatText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   ratingRow: {
     flexDirection: 'row',
@@ -985,222 +999,97 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   ratingText: {
-    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '800',
-  },
-  featuredCardBody: {
-    padding: 12,
-  },
-  featuredMetaUpper: {
-    color: COLORS.primaryLight,
-    fontSize: 10.5,
-    fontWeight: '800',
-    letterSpacing: 0.3,
   },
   featuredTitle: {
-    marginTop: 4,
-    color: COLORS.textMain,
-    fontSize: 14.5,
+    fontSize: 15,
     fontWeight: '800',
   },
-  featuredDesc: {
-    marginTop: 4,
-    color: COLORS.textSecondary,
+  featuredDescText: {
     fontSize: 12,
     lineHeight: 17,
-  },
-  promoBanner: {
-    marginTop: 20,
-    marginHorizontal: 18,
-    borderRadius: 20,
-    padding: 20,
-    backgroundColor: '#F59E0B',
-    backgroundImage:
-      'linear-gradient(135deg, #FBBF24 0%, #F59E0B 60%, #E08206 100%)',
-    overflow: 'hidden',
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  promoSparkle: {
-    position: 'absolute',
-    right: -6,
-    bottom: -10,
-  },
-  promoBadge: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111827',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    gap: 5,
-  },
-  promoBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10.5,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  promoTitle: {
-    marginTop: 12,
-    color: '#111827',
-    fontSize: 20,
-    fontWeight: '800',
-    lineHeight: 25,
-  },
-  promoDesc: {
-    marginTop: 6,
-    color: '#3D2704',
-    fontSize: 13.5,
-    lineHeight: 19,
-    paddingRight: 28,
-  },
-  experiencesHeading: {
-    paddingHorizontal: 18,
-    marginBottom: 12,
-    color: COLORS.textMain,
-    fontSize: 17.5,
-    fontWeight: '800',
-  },
-  expCard: {
-    marginHorizontal: 18,
-    marginBottom: 10,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  expThumb: {
-    width: 66,
-    height: 66,
-    borderRadius: 12,
-    backgroundColor: '#E5E7EB',
-  },
-  expBody: {
-    flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
-  },
-  expMetaTop: {
-    fontSize: 11.5,
-  },
-  expCategory: {
-    color: COLORS.primaryLight,
-    fontWeight: '700',
-  },
-  expDot: {
-    color: '#9CA3AF',
-  },
-  expDist: {
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  expTitle: {
-    marginTop: 3,
-    color: COLORS.textMain,
-    fontSize: 14.5,
-    fontWeight: '800',
-  },
-  expRatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginTop: 4,
   },
-  expRatingNum: {
-    marginLeft: 4,
-    color: '#D97706',
-    fontSize: 12.5,
-    fontWeight: '800',
+  featuredFooterMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
   },
-  expPriceText: {
-    color: '#4B5563',
-    fontSize: 12.5,
-    fontWeight: '500',
+  featuredDistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  featuredDistText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  featuredPriceText: {
+    color: '#D97706',
+    fontSize: 11.5,
+    fontWeight: '800',
   },
   emptyBox: {
-    margin: 22,
-    padding: 24,
-    backgroundColor: '#FFFFFF',
+    margin: 18,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    padding: 22,
     alignItems: 'center',
+    gap: 8,
   },
   emptyTitle: {
-    marginTop: 10,
-    color: COLORS.textMain,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
-  emptyDesc: {
-    marginTop: 6,
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
   clearFilterBtn: {
-    marginTop: 14,
+    marginTop: 4,
     backgroundColor: COLORS.primary,
-    borderRadius: 12,
+    borderRadius: 999,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
   clearFilterText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(17, 24, 39, 0.45)',
     justifyContent: 'center',
-    padding: 22,
+    paddingHorizontal: 22,
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 18,
   },
   modalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 10,
   },
   modalTitle: {
-    color: COLORS.textMain,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
   },
   modalBody: {
-    color: '#374151',
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 13.5,
+    lineHeight: 20,
   },
   modalCloseBtn: {
-    marginTop: 18,
+    marginTop: 14,
     backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: 10,
+    paddingVertical: 9,
     alignItems: 'center',
   },
   modalCloseBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
 });

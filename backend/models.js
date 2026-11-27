@@ -128,10 +128,72 @@ const GalleryImage = mongoose.model(
   )
 );
 
+const HomeBanner = mongoose.model(
+  'HomeBanner',
+  new mongoose.Schema(
+    {
+      id: { type: String, index: true, required: true },
+      etiqueta: { type: String, default: 'DESTACADO', maxlength: 40 },
+      titulo: { type: String, required: true, maxlength: 80 },
+      subtitulo: { type: String, default: '', maxlength: 200 },
+      destino: { type: String, default: 'Directorio', maxlength: 30 },
+      orden: { type: Number, default: 0 },
+    },
+    { timestamps: true }
+  )
+);
+
+const EmergencyNumber = mongoose.model(
+  'EmergencyNumber',
+  new mongoose.Schema(
+    {
+      id: { type: String, index: true, required: true },
+      titulo: { type: String, required: true, maxlength: 80 },
+      numero: { type: String, required: true, maxlength: 25 },
+      tel: { type: String, default: '', maxlength: 25 },
+      detalle: { type: String, default: '', maxlength: 140 },
+      orden: { type: Number, default: 0 },
+    },
+    { timestamps: true }
+  )
+);
+
+const TransportAgency = mongoose.model(
+  'TransportAgency',
+  new mongoose.Schema(
+    {
+      id: { type: String, index: true, required: true },
+      tipo: {
+        type: String,
+        enum: ['buses', 'combis', 'autos'],
+        default: 'buses',
+      },
+      empresa: { type: String, required: true, maxlength: 80 },
+      ruta: { type: String, required: true, maxlength: 140 },
+      terminal: { type: String, required: true, maxlength: 140 },
+      orden: { type: Number, default: 0 },
+    },
+    { timestamps: true }
+  )
+);
+
+// Control de versión de los datos semilla (sincronización única de datos reales)
+const AppMeta = mongoose.model(
+  'AppMeta',
+  new mongoose.Schema({
+    key: { type: String, required: true, unique: true },
+    version: { type: Number, default: 0 },
+  })
+);
+
 module.exports = {
   Place,
   DirectoryItem,
   UserProfile,
   Culture,
   GalleryImage,
+  HomeBanner,
+  EmergencyNumber,
+  TransportAgency,
+  AppMeta,
 };

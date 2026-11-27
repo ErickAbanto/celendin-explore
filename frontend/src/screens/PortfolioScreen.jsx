@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -15,12 +15,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getColors } from '../constants/theme';
-import { getPlaceImageSource } from '../constants/placesCatalog';
-import { addDirectoryReview, getDirectory } from '../services/api';
+import {
+  getPlaceImageSource,
+  getStarIconNames,
+} from '../constants/placesCatalog';
 import {
   MAX_REVIEWS_PER_ITEM,
   useSavedPlaces,
 } from '../context/SavedPlacesContext';
+import { localizeDirectoryItem } from '../constants/i18n';
 
 const DIRECTORY_CATEGORIES = [
   { key: 'Todos', labelEs: 'Todos', labelEn: 'All' },
@@ -29,224 +32,99 @@ const DIRECTORY_CATEGORIES = [
   { key: 'Hoteles', labelEs: 'Hoteles', labelEn: 'Hotels' },
 ];
 
-const VERIFIED_DIRECTORY = [
-  {
-    id: 'dir-tradicion-shilica',
-    categoria: 'Gastronomía',
-    badge: 'Sabor Tradicional',
-    rangoPrecio: 'S/ 25 - S/ 45',
-    nombre: 'Restaurante Tradición Shilica',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Cuy Frito con Papa Picante & Cecina Shilica',
-    direccion: 'Jr. José Gálvez 420 (A 1 cuadra de la Plaza)',
-    telefono: '+51976412310',
-    whatsapp: '51976412310',
-    imagen: '/images/chocolate-celendin.jpg',
-  },
-  {
-    id: 'dir-chocolateria-eden',
-    categoria: 'Gastronomía',
-    badge: 'Clásico Celendino',
-    rangoPrecio: 'S/ 10 - S/ 30',
-    nombre: 'Chocolatería Artesanal "El Edén"',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Chocolate de Taza 100% Cacao & Quesillo con Miel',
-    direccion: 'Jr. Cáceres 312, Portales de la Plaza de Armas',
-    telefono: '+51976418822',
-    whatsapp: '51976418822',
-    imagen: '/images/chocolate-celendin.jpg',
-  },
-  {
-    id: 'dir-taller-toquilla',
-    categoria: 'Artesanía',
-    badge: 'Patrimonio Vivo',
-    rangoPrecio: 'S/ 60 - S/ 350',
-    nombre: 'Taller Maestros de Paja Toquilla',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Sombrero Shilico Fino Tejido a Mano & Hormado',
-    direccion: 'Jr. Dos de Mayo cuadra 6, Centro de Celendín',
-    telefono: '+51976420195',
-    whatsapp: '51976420195',
-    imagen: '/images/sombrero-shilico.jpg',
-  },
-  {
-    id: 'dir-hotel-edendelnorte',
-    categoria: 'Hoteles',
-    badge: 'Hospedaje Céntrico',
-    rangoPrecio: 'S/ 80 - S/ 160',
-    nombre: 'Gran Hotel Edén de Celendín',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Habitaciones con Agua Caliente, Wi-Fi & Desayuno Shilico',
-    direccion: 'Jr. Pardo 485, Frente al Parque Central',
-    telefono: '+51976431044',
-    whatsapp: '51976431044',
-    imagen: '/images/plaza-armas.jpg',
-  },
-  {
-    id: 'dir-posada-san-isidro',
-    categoria: 'Hoteles',
-    badge: 'Vista Panorámica',
-    rangoPrecio: 'S/ 70 - S/ 130',
-    nombre: 'Posada Mirador San Isidro',
-    verificado: true,
-    rating: '0.0',
-    ratingSum: 0,
-    resenasCount: 0,
-    especialidad: 'Alojamiento Ecológico & Tours al Cañón del Marañón',
-    direccion: 'Av. San Isidro 218, Mirador Oeste de Celendín',
-    telefono: '+51976455209',
-    whatsapp: '51976455209',
-    imagen: '/images/mirador-san-isidro.jpg',
-  },
-];
-
 export default function PortfolioScreen() {
   const insets = useSafeAreaInsets();
-  const { darkMode, language } = useSavedPlaces();
+  const {
+    directoryItems,
+    rateDirectoryItem,
+    openAdminPanel,
+    darkMode,
+    language,
+  } = useSavedPlaces();
+
   const C = getColors(darkMode);
   const isEn = language === 'en';
   const [selectedCategory, setSelectedCategory] = useState('Todos');
-  const [directoryItems, setDirectoryItems] = useState(VERIFIED_DIRECTORY);
   const [ratingTarget, setRatingTarget] = useState(null);
   const [selectedStars, setSelectedStars] = useState(0);
+  const secretTapRef = useRef({ count: 0, lastTap: 0 });
+
+  const handleSecretHeaderTap = () => {
+    const now = Date.now();
+    const diff = now - secretTapRef.current.lastTap;
+    const nextCount = diff < 650 ? secretTapRef.current.count + 1 : 1;
+    if (nextCount >= 5) {
+      secretTapRef.current = { count: 0, lastTap: 0 };
+      openAdminPanel('directory');
+    } else {
+      secretTapRef.current = { count: nextCount, lastTap: now };
+    }
+  };
 
   const topInset = Math.max(
     insets.top,
     Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 4 : 16
   );
 
-  useEffect(() => {
-    let active = true;
-    getDirectory()
-      .then((res) => {
-        if (active && Array.isArray(res) && res.length > 0) {
-          setDirectoryItems(res);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const filteredDirectory = useMemo(() => {
-    if (selectedCategory === 'Todos') return directoryItems;
-    return directoryItems.filter(
-      (item) => item.categoria === selectedCategory
-    );
-  }, [selectedCategory, directoryItems]);
+    const base =
+      selectedCategory === 'Todos'
+        ? directoryItems
+        : directoryItems.filter((item) => item.categoria === selectedCategory);
+    return base.map((item) => localizeDirectoryItem(item, language));
+  }, [selectedCategory, directoryItems, language]);
 
   const handleCall = async (item) => {
-    const url = `tel:${item.telefono}`;
     try {
-      await Linking.openURL(url);
+      await Linking.openURL(`tel:${item.telefono}`);
     } catch {
-      Alert.alert(
-        item.nombre,
-        `${isEn ? 'Phone' : 'Teléfono'}: ${item.telefono}`
-      );
+      Alert.alert(item.nombre, `${isEn ? 'Phone' : 'Tel'}: ${item.telefono}`);
     }
   };
 
   const handleWhatsApp = async (item) => {
     const msg = encodeURIComponent(
-      `Hola ${item.nombre}, vengo desde la app Celendín Explore y deseo consultar disponibilidad.`
+      isEn
+        ? `Hello ${item.nombre}, I'm contacting you from the Celendín Explore app.`
+        : `Hola ${item.nombre}, consulto desde la app Celendín Explore.`
     );
-    const url = `https://wa.me/${item.whatsapp}?text=${msg}`;
     try {
-      await Linking.openURL(url);
+      await Linking.openURL(`https://wa.me/${item.whatsapp}?text=${msg}`);
     } catch {
-      Alert.alert(
-        'WhatsApp',
-        `${isEn ? 'Contact number' : 'Número de contacto'}: +${item.whatsapp}`
-      );
+      Alert.alert('WhatsApp', `+${item.whatsapp}`);
     }
   };
 
   const submitDirectoryRating = async (stars) => {
     if (!ratingTarget) return;
     if ((ratingTarget.resenasCount ?? 0) >= MAX_REVIEWS_PER_ITEM) return;
-    const itemId = ratingTarget.id;
     setSelectedStars(stars);
-
-    const prevSnapshot = directoryItems;
-    setDirectoryItems((prev) =>
-      prev.map((d) => {
-        if (d.id !== itemId) return d;
-        const count = Number(d.resenasCount ?? 0);
-        const prevSum = Number(d.ratingSum ?? Number(d.rating || 0) * count);
-        const nextCount = count + 1;
-        const nextSum = prevSum + stars;
-        return {
-          ...d,
-          resenasCount: nextCount,
-          ratingSum: nextSum,
-          rating: (nextSum / nextCount).toFixed(1),
-        };
-      })
-    );
-
-    try {
-      const updated = await addDirectoryReview(itemId, { rating: stars });
-      if (updated && updated.id) {
-        setDirectoryItems((prev) =>
-          prev.map((d) => (d.id === updated.id ? updated : d))
-        );
-      }
-    } catch (err) {
-      if (err?.status === 409 || err?.status === 429) {
-        setDirectoryItems(prevSnapshot);
-        Alert.alert(ratingTarget.nombre, err.message);
-      }
-    }
+    await rateDirectoryItem(ratingTarget.id, stars);
 
     setTimeout(() => {
       setRatingTarget(null);
       setSelectedStars(0);
-    }, 300);
+    }, 250);
   };
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
       <StatusBar barStyle="light-content" backgroundColor="#0F5C41" />
-
-      {/* Emerald Notch Safe Area */}
       <View style={[styles.notchBar, { height: topInset }]} />
 
-      {/* White Directory Header */}
+      {/* Cabecera limpia */}
       <View
         style={[
           styles.header,
           { backgroundColor: C.card, borderBottomColor: C.border },
         ]}
       >
-        <Text style={styles.eyebrow}>
-          {isEn
-            ? 'OFFICIAL VERIFIED DIRECTORY'
-            : 'DIRECTORIO OFICIAL VERIFICADO'}
-        </Text>
-        <Text style={[styles.headerTitle, { color: C.text }]}>
-          {isEn ? 'Flavors & Shilico Craft' : 'Sabores & Arte Shilico'}
-        </Text>
-        <Text style={[styles.headerSub, { color: C.textSecondary }]}>
-          {isEn
-            ? 'Traditional restaurants, chocolate shops, toquilla straw workshops and hotels.'
-            : 'Restaurantes tradicionales, chocolaterías, talleres de paja toquilla y hoteles.'}
-        </Text>
+        <View style={styles.headerTitleRow}>
+          <Text style={[styles.headerTitle, { color: C.text }]}>
+            {isEn ? 'Directory' : 'Directorio'}
+          </Text>
+        </View>
 
-        {/* Category Filter Chips */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -262,10 +140,7 @@ export default function PortfolioScreen() {
                   styles.chip,
                   active
                     ? styles.chipActive
-                    : {
-                        backgroundColor: C.card,
-                        borderColor: C.border,
-                      },
+                    : { backgroundColor: C.card, borderColor: C.border },
                 ]}
               >
                 <Text
@@ -282,7 +157,7 @@ export default function PortfolioScreen() {
         </ScrollView>
       </View>
 
-      {/* Directory Cards */}
+      {/* Tarjetas limpias del directorio */}
       <ScrollView
         style={styles.listScroll}
         contentContainerStyle={styles.listContent}
@@ -296,79 +171,97 @@ export default function PortfolioScreen() {
               { backgroundColor: C.card, borderColor: C.border },
             ]}
           >
-            {/* Card Cover Image */}
+            {/* Imagen 100% limpia sin etiquetas encima */}
             <View style={styles.cardImageWrap}>
               <Image
                 source={getPlaceImageSource(item.imagen)}
                 style={styles.cardImage}
                 resizeMode="cover"
               />
-              <View style={styles.amberBadge}>
-                <Text style={styles.amberBadgeText}>{item.badge}</Text>
-              </View>
-              <View style={styles.priceBadge}>
-                <Text style={styles.priceBadgeText}>{item.rangoPrecio}</Text>
-              </View>
             </View>
 
-            {/* Card Body */}
+            {/* Información y descripción afuera/debajo de la imagen */}
             <View style={styles.cardBody}>
-              <View style={styles.titleRow}>
-                <View style={styles.nameCheckWrap}>
-                  <Text style={[styles.cardTitle, { color: C.text }]}>
-                    {item.nombre}
-                  </Text>
-                  {item.verificado && (
-                    <Ionicons
-                      name="checkmark-circle-outline"
-                      size={17}
-                      color={C.primaryLight}
-                      style={styles.verifiedIcon}
-                    />
-                  )}
-                </View>
-                <Pressable
-                  style={styles.ratingWrap}
-                  onPress={() => {
-                    setSelectedStars(0);
-                    setRatingTarget(item);
-                  }}
-                  hitSlop={8}
+              <View style={styles.topMetaRow}>
+                <View
+                  style={[
+                    styles.catPillClean,
+                    { backgroundColor: C.primarySoft },
+                  ]}
                 >
-                  <Ionicons name="star" size={14} color="#F5A623" />
-                  <Text style={[styles.ratingText, { color: C.text }]}>
-                    {item.rating || '0.0'}
+                  <Text style={[styles.catPillText, { color: C.primaryLight }]}>
+                    {item.badge || item.categoria}
                   </Text>
-                </Pressable>
+                </View>
+
+                <View style={styles.metaRightRow}>
+                  <Text style={styles.priceCleanText}>{item.rangoPrecio}</Text>
+                  <Pressable
+                    style={styles.ratingWrap}
+                    onPress={() => {
+                      setSelectedStars(0);
+                      setRatingTarget(item);
+                    }}
+                    hitSlop={8}
+                  >
+                    {getStarIconNames(item.rating).map((iconName, sIdx) => (
+                      <Ionicons
+                        key={sIdx}
+                        name={iconName}
+                        size={12}
+                        color={
+                          Number(item.rating || 0) > 0
+                            ? '#F5A623'
+                            : C.textMuted
+                        }
+                      />
+                    ))}
+                    <Text style={[styles.ratingText, { color: C.text }]}>
+                      {item.rating || '0.0'}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
 
-              <Text style={[styles.specialtyText, { color: C.primaryLight }]}>
+              <Text
+                style={[styles.cardTitle, { color: C.text }]}
+                numberOfLines={1}
+              >
+                {item.nombre}
+              </Text>
+
+              <Text
+                style={[styles.specialtyText, { color: C.textSecondary }]}
+                numberOfLines={2}
+              >
                 {item.especialidad}
               </Text>
 
               <View style={styles.addressRow}>
                 <Ionicons
                   name="location-outline"
-                  size={14}
+                  size={13}
                   color={C.textMuted}
                 />
-                <Text style={[styles.addressText, { color: C.textSecondary }]}>
+                <Text
+                  style={[styles.addressText, { color: C.textSecondary }]}
+                  numberOfLines={1}
+                >
                   {item.direccion}
                 </Text>
               </View>
 
-              {/* Llamar + WhatsApp Actions */}
               <View style={styles.actionsRow}>
                 <Pressable
                   style={[
                     styles.callBtn,
-                    { backgroundColor: C.card, borderColor: C.border },
+                    { backgroundColor: C.cardAlt, borderColor: C.border },
                   ]}
                   onPress={() => handleCall(item)}
                 >
                   <Ionicons
                     name="call-outline"
-                    size={16}
+                    size={15}
                     color={C.primaryLight}
                   />
                   <Text style={[styles.callBtnText, { color: C.text }]}>
@@ -381,8 +274,8 @@ export default function PortfolioScreen() {
                   onPress={() => handleWhatsApp(item)}
                 >
                   <Ionicons
-                    name="chatbubble-outline"
-                    size={16}
+                    name="logo-whatsapp"
+                    size={15}
                     color="#FFFFFF"
                   />
                   <Text style={styles.whatsappBtnText}>WhatsApp</Text>
@@ -393,7 +286,7 @@ export default function PortfolioScreen() {
         ))}
       </ScrollView>
 
-      {/* Rate Directory Modal */}
+      {/* Modal de calificación */}
       <Modal
         visible={!!ratingTarget}
         transparent
@@ -408,37 +301,23 @@ export default function PortfolioScreen() {
             ]}
           >
             <Text style={[styles.modalTitle, { color: C.text }]}>
-              {isEn ? 'Rate this place' : 'Calificar establecimiento'}
+              {ratingTarget?.nombre}
             </Text>
-            <Text style={[styles.modalSub, { color: C.textSecondary }]}>
-              {ratingTarget?.nombre} ({ratingTarget?.resenasCount ?? 0} /{' '}
-              {MAX_REVIEWS_PER_ITEM} {isEn ? 'votes' : 'votos'})
-            </Text>
-
-            {(ratingTarget?.resenasCount ?? 0) >= MAX_REVIEWS_PER_ITEM ? (
-              <Text style={[styles.modalSub, { color: '#E11D48', fontWeight: '700' }]}>
-                {isEn
-                  ? `Limit of ${MAX_REVIEWS_PER_ITEM} votes reached.`
-                  : `Límite máximo de ${MAX_REVIEWS_PER_ITEM} votos alcanzado.`}
-              </Text>
-            ) : (
-              <View style={styles.modalStarsRow}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Pressable
-                    key={star}
-                    onPress={() => submitDirectoryRating(star)}
-                    hitSlop={6}
-                  >
-                    <Ionicons
-                      name={star <= selectedStars ? 'star' : 'star-outline'}
-                      size={32}
-                      color="#F5A623"
-                    />
-                  </Pressable>
-                ))}
-              </View>
-            )}
-
+            <View style={styles.modalStarsRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Pressable
+                  key={star}
+                  onPress={() => submitDirectoryRating(star)}
+                  hitSlop={6}
+                >
+                  <Ionicons
+                    name={star <= selectedStars ? 'star' : 'star-outline'}
+                    size={30}
+                    color="#F5A623"
+                  />
+                </Pressable>
+              ))}
+            </View>
             <Pressable
               style={[styles.modalCancelBtn, { borderColor: C.border }]}
               onPress={() => setRatingTarget(null)}
@@ -464,34 +343,33 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 18,
-    paddingTop: 14,
+    paddingTop: 16,
     paddingBottom: 14,
     borderBottomWidth: 1,
   },
-  eyebrow: {
-    color: '#D97706',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.7,
-    marginBottom: 4,
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  titleAccentBar: {
+    width: 4,
+    height: 22,
+    borderRadius: 2,
+    backgroundColor: '#0F5C41',
   },
   headerTitle: {
     fontSize: 22,
-    fontWeight: '900',
-  },
-  headerSub: {
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 4,
+    fontWeight: '800',
+    letterSpacing: -0.4,
   },
   chipsRow: {
     gap: 8,
     paddingTop: 14,
-    paddingRight: 16,
   },
   chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 999,
     borderWidth: 1,
   },
@@ -500,153 +378,151 @@ const styles = StyleSheet.create({
     borderColor: '#0F5C41',
   },
   chipText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
   },
   listScroll: {
     flex: 1,
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 28,
-    gap: 16,
+    padding: 16,
+    paddingBottom: 24,
+    gap: 14,
   },
   card: {
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
     overflow: 'hidden',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
   },
   cardImageWrap: {
     position: 'relative',
-    height: 155,
+    height: 140,
     width: '100%',
     backgroundColor: '#1F2937',
+    overflow: 'hidden',
   },
   cardImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
     width: '100%',
-    height: '100%',
+    height: 140,
   },
   amberBadge: {
     position: 'absolute',
-    top: 12,
-    left: 12,
+    top: 10,
+    left: 10,
     backgroundColor: '#F5A623',
     borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   amberBadgeText: {
     color: '#111827',
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '800',
   },
   priceBadge: {
     position: 'absolute',
-    right: 12,
-    bottom: 12,
+    right: 10,
+    bottom: 10,
     backgroundColor: 'rgba(17, 24, 39, 0.78)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
   priceBadgeText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '800',
   },
   cardBody: {
-    padding: 15,
+    padding: 14,
   },
-  titleRow: {
+  topMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 10,
+    alignItems: 'center',
+    marginBottom: 6,
   },
-  nameCheckWrap: {
-    flex: 1,
+  catPillClean: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  catPillText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  metaRightRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 5,
+    gap: 10,
+  },
+  priceCleanText: {
+    color: '#D97706',
+    fontSize: 12,
+    fontWeight: '800',
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: '900',
-    flexShrink: 1,
-  },
-  verifiedIcon: {
-    marginTop: 1,
+    fontWeight: '800',
   },
   ratingWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingTop: 2,
+    gap: 3,
   },
   ratingText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
   },
   specialtyText: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 4,
+    fontSize: 12.5,
     lineHeight: 18,
+    marginTop: 3,
   },
   addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginTop: 7,
+    gap: 4,
+    marginTop: 5,
   },
   addressText: {
-    fontSize: 12.5,
+    fontSize: 12,
     flex: 1,
   },
   actionsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 14,
+    marginTop: 11,
   },
   callBtn: {
     flex: 1,
-    height: 42,
-    borderRadius: 12,
+    height: 38,
+    borderRadius: 10,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
+    gap: 6,
   },
   callBtnText: {
-    fontSize: 13.5,
+    fontSize: 12.5,
     fontWeight: '800',
   },
   whatsappBtn: {
     flex: 1,
-    height: 42,
-    borderRadius: 12,
+    height: 38,
+    borderRadius: 10,
     backgroundColor: '#128C63',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
+    gap: 6,
   },
   whatsappBtnText: {
     color: '#FFFFFF',
-    fontSize: 13.5,
+    fontSize: 12.5,
     fontWeight: '800',
   },
   modalBackdrop: {
@@ -656,33 +532,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   modalCard: {
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 20,
+    padding: 18,
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   modalTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  modalSub: {
-    fontSize: 13,
-    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '800',
   },
   modalStarsRow: {
     flexDirection: 'row',
     gap: 10,
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
   modalCancelBtn: {
     borderRadius: 10,
     borderWidth: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 7,
   },
   modalCancelText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
   },
 });

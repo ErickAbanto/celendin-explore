@@ -1,5 +1,5 @@
-import React from 'react';
-import { StatusBar } from 'react-native';
+import React, { useEffect } from 'react';
+import { Platform, StatusBar } from 'react-native';
 import {
   DarkTheme,
   DefaultTheme,
@@ -8,6 +8,7 @@ import {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import TabNavigator from './src/navigation/TabNavigator';
 import WelcomeScreen from './src/screens/WelcomeScreen';
+import AdminPanelModal from './src/screens/AdminPanelModal';
 import {
   SavedPlacesProvider,
   useSavedPlaces,
@@ -18,6 +19,22 @@ function AppContent() {
   const { showWelcome, setShowWelcome, darkMode } = useSavedPlaces();
   const C = getColors(darkMode);
   const baseTheme = darkMode ? DarkTheme : DefaultTheme;
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const styleId = 'celendin-clean-web-styles';
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+          *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+          * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+          *:focus, *:focus-visible { outline: none !important; }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+  }, []);
 
   const navTheme = {
     ...baseTheme,
@@ -43,6 +60,7 @@ function AppContent() {
       ) : (
         <NavigationContainer theme={navTheme}>
           <TabNavigator />
+          <AdminPanelModal />
         </NavigationContainer>
       )}
     </>

@@ -43,6 +43,40 @@ export const getDirectory = () => request('/directory');
 export const getCulture = () => request('/culture');
 export const getGalleryImages = () => request('/images');
 
+export const createPlace = (place) =>
+  request('/places', {
+    method: 'POST',
+    body: JSON.stringify(place),
+  });
+
+export const updatePlace = (placeId, place) =>
+  request(`/places/${encodeURIComponent(placeId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(place),
+  });
+
+export const deletePlace = (placeId) =>
+  request(`/places/${encodeURIComponent(placeId)}`, {
+    method: 'DELETE',
+  });
+
+export const createDirectoryItem = (item) =>
+  request('/directory', {
+    method: 'POST',
+    body: JSON.stringify(item),
+  });
+
+export const updateDirectoryItem = (itemId, item) =>
+  request(`/directory/${encodeURIComponent(itemId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(item),
+  });
+
+export const deleteDirectoryItem = (itemId) =>
+  request(`/directory/${encodeURIComponent(itemId)}`, {
+    method: 'DELETE',
+  });
+
 export const addPlaceReview = (placeId, review) =>
   request(`/places/${encodeURIComponent(placeId)}/reviews`, {
     method: 'POST',

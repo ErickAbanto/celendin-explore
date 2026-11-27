@@ -84,11 +84,6 @@ export default function TabNavigator() {
               ]}
             >
               <Ionicons name={iconName} size={21} color={color} />
-              {route.name === 'Perfil / Offline' && savedPlaces.length > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{savedPlaces.length}</Text>
-                </View>
-              )}
             </View>
           );
         },
@@ -126,8 +121,8 @@ export default function TabNavigator() {
         component={ContactScreen}
         options={{
           headerShown: false,
-          title: isEn ? 'Profile / Offline' : 'Perfil y Modo Offline',
-          tabBarLabel: isEn ? 'Profile / Offline' : 'Perfil / Offline',
+          title: isEn ? 'Profile' : 'Perfil',
+          tabBarLabel: isEn ? 'Profile' : 'Perfil',
         }}
       />
     </Tab.Navigator>

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   Linking,
@@ -23,73 +22,37 @@ import {
   openGoogleMapsLocation,
 } from '../constants/placesCatalog';
 import { useSavedPlaces } from '../context/SavedPlacesContext';
+import {
+  localizeEmergency,
+  localizePlace,
+  localizeTransport,
+  tr,
+} from '../constants/i18n';
 
-const EMERGENCY_NUMBERS = [
-  {
-    id: 'pnp',
-    titulo: 'Comisaría PNP Celendín',
-    numero: '105',
-    tel: '105',
-    detalle: 'Seguridad Ciudadana y Auxilio Vial 24h',
-  },
-  {
-    id: 'hospital',
-    titulo: 'Hospital de Apoyo Celendín',
-    numero: '(076) 555-120',
-    tel: '076555120',
-    detalle: 'Emergencias Médicas · Av. José Gálvez',
-  },
-  {
-    id: 'samu',
-    titulo: 'SAMU / Ambulancia Nacional',
-    numero: '106',
-    tel: '106',
-    detalle: 'Atención prehospitalaria gratuita',
-  },
-];
-
-const BUS_TERMINALS = [
-  {
-    empresa: 'Transportes Virgen del Carmen',
-    ruta: 'Celendín ↔ Cajamarca',
-    salidas: '4:00 AM, 6:00 AM, 9:00 AM, 1:00 PM, 4:00 PM',
-    terminal: 'Jr. Pardo cuadra 9, Celendín',
-  },
-  {
-    empresa: 'Expreso Shilico / Combis',
-    ruta: 'Celendín ↔ Cajamarca (Vía La Encañada)',
-    salidas: 'Salidas cada 45 min de 4:30 AM a 5:30 PM',
-    terminal: 'Terminal Terrestre Municipal Celendín',
-  },
-  {
-    empresa: 'Ruta Nororiental Chachapoyas',
-    ruta: 'Celendín → Balsas → Leymebamba → Chachapoyas',
-    salidas: '5:00 AM y 12:30 PM (cruce Cañón del Marañón)',
-    terminal: 'Paradero Av. Circunvalación Este',
-  },
-];
-
-export default function ContactScreen({ navigation }) {
+export default function ContactScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const {
-    savedPlaces,
+    savedPlaces: rawSavedPlaces,
+    emergencyNumbers: rawEmergencyNumbers,
+    busAgencies: rawBusAgencies,
     darkMode,
     setDarkMode,
     language,
     setLanguage,
-    offlineReady,
-    setOfflineReady,
     setShowWelcome,
-    syncPlaces,
   } = useSavedPlaces();
 
   const C = getColors(darkMode);
   const isEn = language === 'en';
-  const [downloading, setDownloading] = useState(false);
+  const savedPlaces = rawSavedPlaces.map((p) => localizePlace(p, language));
+  const emergencyNumbers = rawEmergencyNumbers.map((e) =>
+    localizeEmergency(e, language)
+  );
+  const busAgencies = rawBusAgencies.map((b) => localizeTransport(b, language));
   const [activeSlide, setActiveSlide] = useState(0);
   const [sosModalVisible, setSosModalVisible] = useState(false);
-  const [busModalVisible, setBusModalVisible] = useState(false);
+  const [transportModalType, setTransportModalType] = useState(null); // 'buses' | 'combis' | 'autos' | null
 
   const topInset = Math.max(
     insets.top,
@@ -98,20 +61,6 @@ export default function ContactScreen({ navigation }) {
 
   const savedCardWidth = Math.max(width - 32, 260);
   const savedCardStep = savedCardWidth + 12;
-
-  const handleDownloadOffline = async () => {
-    if (downloading) return;
-    setDownloading(true);
-    try {
-      await Promise.all([
-        syncPlaces(),
-        new Promise((resolve) => setTimeout(resolve, 900)),
-      ]);
-      setOfflineReady(true);
-    } finally {
-      setDownloading(false);
-    }
-  };
 
   const handleSavedScroll = (event) => {
     const x = event.nativeEvent.contentOffset.x || 0;
@@ -125,15 +74,16 @@ export default function ContactScreen({ navigation }) {
     try {
       await Linking.openURL(`tel:${tel}`);
     } catch {
-      Alert.alert('Emergencia', `Marca el número ${tel}`);
+      Alert.alert(
+        isEn ? 'Emergency' : 'Emergencia',
+        isEn ? `Dial ${tel}` : `Marca el número ${tel}`
+      );
     }
   };
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
       <StatusBar barStyle="light-content" backgroundColor="#0F5C41" />
-
-      {/* Emerald Notch Safe Area */}
       <View style={[styles.notchBar, { height: topInset }]} />
 
       <ScrollView
@@ -141,7 +91,7 @@ export default function ContactScreen({ navigation }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Explorer Profile Card */}
+        {/* 1. Tarjeta de Perfil Limpia (sin subtítulo de contador) */}
         <View style={styles.profileCard}>
           <View style={styles.avatarBox}>
             <Text style={styles.avatarText}>VE</Text>
@@ -149,16 +99,12 @@ export default function ContactScreen({ navigation }) {
 
           <View style={styles.profileInfo}>
             <View style={styles.explorerBadge}>
-              <Text style={styles.explorerBadgeText}>EXPLORADOR SHILICO</Text>
+              <Text style={styles.explorerBadgeText}>
+                {isEn ? 'SHILICO EXPLORER' : 'EXPLORADOR SHILICO'}
+              </Text>
             </View>
             <Text style={styles.profileName}>
               {isEn ? 'Explorer Traveler' : 'Viajero Explorador'}
-            </Text>
-            <Text style={styles.profileSub}>
-              {savedPlaces.length}{' '}
-              {isEn
-                ? 'places in your Favorites'
-                : 'atractivos en tus Favoritos'}
             </Text>
           </View>
 
@@ -171,89 +117,13 @@ export default function ContactScreen({ navigation }) {
           </Pressable>
         </View>
 
-        {/* Offline Map Package Card */}
-        <View
-          style={[
-            styles.offlineCard,
-            { backgroundColor: C.card, borderColor: C.border },
-          ]}
-        >
-          <View style={styles.offlineTopRow}>
-            <View
-              style={[
-                styles.offlineIconCircle,
-                {
-                  backgroundColor: offlineReady
-                    ? '#DCFCE7'
-                    : darkMode
-                    ? '#123327'
-                    : '#E6F4EE',
-                },
-              ]}
-            >
-              <Ionicons
-                name={
-                  offlineReady ? 'checkmark-circle-outline' : 'download-outline'
-                }
-                size={21}
-                color={darkMode ? '#34D399' : '#0F5C41'}
-              />
-            </View>
-
-            <View style={styles.offlineTextCol}>
-              <Text style={[styles.offlineTitle, { color: C.text }]}>
-                {isEn
-                  ? 'Celendín Offline Package'
-                  : 'Paquete Offline de Celendín'}
-              </Text>
-              <Text style={[styles.offlineDesc, { color: C.textSecondary }]}>
-                {isEn
-                  ? 'GPS maps, routes to Langascocha, Llanguat & Marañón without mobile data (42 MB).'
-                  : 'Mapas GPS, rutas a Langascocha, Llanguat y Marañón sin gastar datos (42 MB).'}
-              </Text>
-            </View>
-          </View>
-
-          <Pressable
-            style={[
-              styles.downloadBtn,
-              offlineReady && styles.downloadBtnDone,
-            ]}
-            onPress={handleDownloadOffline}
-          >
-            {downloading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons
-                name={offlineReady ? 'checkmark-done' : 'download-outline'}
-                size={18}
-                color="#FFFFFF"
-              />
-            )}
-            <Text style={styles.downloadBtnText}>
-              {downloading
-                ? isEn
-                  ? 'Downloading offline routes...'
-                  : 'Descargando mapas y rutas...'
-                : offlineReady
-                ? isEn
-                  ? 'Offline Maps Ready (42 MB)'
-                  : 'Mapa Offline Listo para Uso sin Internet'
-                : isEn
-                ? 'Download Map for Offline Use'
-                : 'Descargar Mapa para Uso sin Internet'}
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Saved Places Carousel Header */}
+        {/* 2. Carrusel Mis Lugares Guardados */}
         <View style={styles.savedSection}>
           <View style={styles.savedHeader}>
             <View style={styles.savedTitleRow}>
               <Ionicons name="heart" size={14} color="#E11D48" />
-              <Text style={styles.savedTitle}>
-                {isEn ? 'MY SAVED PLACES' : 'MIS LUGARES GUARDADOS'} (
-                {savedPlaces.length})
+              <Text style={[styles.savedTitle, { color: C.primaryLight }]}>
+                {isEn ? 'MY SAVED PLACES' : 'MIS LUGARES GUARDADOS'}
               </Text>
             </View>
 
@@ -284,8 +154,8 @@ export default function ContactScreen({ navigation }) {
             >
               <Text style={[styles.emptySavedText, { color: C.textSecondary }]}>
                 {isEn
-                  ? 'Save places from Inicio or Lugares to keep quick offline access here.'
-                  : 'Guarda destinos desde Inicio o Lugares para tener acceso rápido sin conexión.'}
+                  ? 'Save places from Home or Places to keep quick access here.'
+                  : 'Guarda destinos desde Inicio o Lugares para tener acceso rápido aquí.'}
               </Text>
             </View>
           ) : (
@@ -298,7 +168,7 @@ export default function ContactScreen({ navigation }) {
               contentContainerStyle={styles.savedCarouselContent}
             >
               {savedPlaces.map((place) => (
-                <Pressable
+                <View
                   key={place.id || place.nombre}
                   style={[
                     styles.savedCard,
@@ -308,22 +178,27 @@ export default function ContactScreen({ navigation }) {
                       borderColor: C.border,
                     },
                   ]}
-                  onPress={() =>
-                    navigation?.navigate('Lugares', {
-                      lugarElegido: place.nombre,
-                    })
-                  }
                 >
                   <Image
-                    source={getPlaceImageSource(place.imagen)}
+                    source={getPlaceImageSource(place)}
                     style={styles.savedThumb}
                     resizeMode="cover"
                   />
 
                   <View style={styles.savedCenter}>
-                    <View style={styles.savedCatPill}>
-                      <Text style={styles.savedCatText}>
-                        {place.categoria || 'Destino'}
+                    <View
+                      style={[
+                        styles.savedCatPill,
+                        darkMode && { backgroundColor: '#3A2A0B' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.savedCatText,
+                          darkMode && { color: '#FBBF24' },
+                        ]}
+                      >
+                        {place.categoria || tr('Destino', language)}
                       </Text>
                     </View>
                     <Text
@@ -339,11 +214,14 @@ export default function ContactScreen({ navigation }) {
                         color={C.primaryLight}
                       />
                       <Text
-                        style={[styles.savedMetaText, { color: C.textSecondary }]}
-                        numberOfLines={2}
+                        style={[
+                          styles.savedMetaText,
+                          { color: C.textSecondary },
+                        ]}
+                        numberOfLines={1}
                       >
-                        {place.distanciaCorta || 'Centro'} •{' '}
-                        {place.precioTexto || 'Ingreso Libre'}
+                        {place.distanciaCorta || tr('Centro', language)} •{' '}
+                        {place.precioTexto || tr('Libre', language)}
                       </Text>
                     </View>
                   </View>
@@ -351,35 +229,29 @@ export default function ContactScreen({ navigation }) {
                   <Pressable
                     style={styles.savedGoBtn}
                     onPress={() => openGoogleMapsLocation(place)}
-                    accessibilityLabel={`Abrir ${place.nombre} en Google Maps`}
                   >
                     <Ionicons
                       name="paper-plane-outline"
-                      size={18}
+                      size={17}
                       color="#FFFFFF"
                     />
                   </Pressable>
-                </Pressable>
+                </View>
               ))}
             </ScrollView>
           )}
         </View>
 
-        {/* Preferences Card */}
+        {/* 3. Tarjeta de Preferencias y Terminales */}
         <View
           style={[
             styles.settingsCard,
             { backgroundColor: C.card, borderColor: C.border },
           ]}
         >
-          {/* Dark Mode Row */}
-          <View
-            style={[styles.settingRow, { borderBottomColor: C.border }]}
-          >
+          <View style={[styles.settingRow, { borderBottomColor: C.border }]}>
             <Text style={[styles.settingLabel, { color: C.text }]}>
-              {isEn
-                ? 'Dark Mode (OLED battery saver)'
-                : 'Tema Oscuro (Ahorro de batería OLED)'}
+              {isEn ? 'Dark Mode' : 'Tema Oscuro'}
             </Text>
             <Switch
               value={darkMode}
@@ -389,10 +261,7 @@ export default function ContactScreen({ navigation }) {
             />
           </View>
 
-          {/* Language Row */}
-          <View
-            style={[styles.settingRow, { borderBottomColor: C.border }]}
-          >
+          <View style={[styles.settingRow, { borderBottomColor: C.border }]}>
             <Text style={[styles.settingLabel, { color: C.text }]}>
               {isEn ? 'Guide Language' : 'Idioma de la Guía'}
             </Text>
@@ -451,10 +320,9 @@ export default function ContactScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Bus Terminals Row */}
           <Pressable
-            style={[styles.settingRow, styles.settingRowLast]}
-            onPress={() => setBusModalVisible(true)}
+            style={[styles.settingRow, { borderBottomColor: C.border }]}
+            onPress={() => setTransportModalType('buses')}
           >
             <View style={styles.busTextCol}>
               <Text style={[styles.settingLabel, { color: C.text }]}>
@@ -470,9 +338,47 @@ export default function ContactScreen({ navigation }) {
             </View>
             <Ionicons name="bus-outline" size={22} color="#F5A623" />
           </Pressable>
+
+          <Pressable
+            style={[styles.settingRow, { borderBottomColor: C.border }]}
+            onPress={() => setTransportModalType('combis')}
+          >
+            <View style={styles.busTextCol}>
+              <Text style={[styles.settingLabel, { color: C.text }]}>
+                {isEn
+                  ? 'Combi Terminal to Cajamarca'
+                  : 'Terminal de Combis a Cajamarca'}
+              </Text>
+              <Text style={[styles.busSub, { color: C.textSecondary }]}>
+                {isEn
+                  ? 'Frequent departures from 5:00 AM · Jr. Cáceres & Av. Amazonas'
+                  : 'Salidas continuas desde las 5:00 AM · Jr. Cáceres y Av. Amazonas'}
+              </Text>
+            </View>
+            <Ionicons name="car-outline" size={22} color="#107C53" />
+          </Pressable>
+
+          <Pressable
+            style={[styles.settingRow, styles.settingRowLast]}
+            onPress={() => setTransportModalType('autos')}
+          >
+            <View style={styles.busTextCol}>
+              <Text style={[styles.settingLabel, { color: C.text }]}>
+                {isEn
+                  ? 'Car Stand to Cajamarca'
+                  : 'Paradero de Autos a Cajamarca'}
+              </Text>
+              <Text style={[styles.busSub, { color: C.textSecondary }]}>
+                {isEn
+                  ? 'Direct shared cars (~2h via paved road)'
+                  : 'Autos colectivos directos (~2h vía asfaltada PE-08B)'}
+              </Text>
+            </View>
+            <Ionicons name="car-sport-outline" size={22} color="#0284C7" />
+          </Pressable>
         </View>
 
-        {/* Replay Welcome / Onboarding */}
+        {/* 4. Botón Volver a ver Pantalla de Bienvenida */}
         <Pressable
           style={[
             styles.onboardingBtn,
@@ -487,8 +393,8 @@ export default function ContactScreen({ navigation }) {
           />
           <Text style={[styles.onboardingBtnText, { color: C.textSecondary }]}>
             {isEn
-              ? 'View Welcome Screen Again (Onboarding)'
-              : 'Volver a ver Pantalla de Bienvenida (Onboarding)'}
+              ? 'View Welcome Screen Again'
+              : 'Volver a ver Pantalla de Bienvenida'}
           </Text>
         </Pressable>
       </ScrollView>
@@ -519,7 +425,7 @@ export default function ContactScreen({ navigation }) {
               </Pressable>
             </View>
 
-            {EMERGENCY_NUMBERS.map((item) => (
+            {emergencyNumbers.map((item) => (
               <View
                 key={item.id}
                 style={[
@@ -550,12 +456,12 @@ export default function ContactScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* Bus Terminals Modal */}
+      {/* Transport Modal (Buses, Combis, Autos) */}
       <Modal
-        visible={busModalVisible}
+        visible={transportModalType !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setBusModalVisible(false)}
+        onRequestClose={() => setTransportModalType(null)}
       >
         <View style={styles.modalBackdrop}>
           <View
@@ -566,40 +472,63 @@ export default function ContactScreen({ navigation }) {
           >
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleRow}>
-                <Ionicons name="bus" size={20} color="#F5A623" />
+                <Ionicons
+                  name={
+                    transportModalType === 'autos'
+                      ? 'car-sport'
+                      : transportModalType === 'combis'
+                      ? 'car'
+                      : 'bus'
+                  }
+                  size={20}
+                  color={
+                    transportModalType === 'autos'
+                      ? '#0284C7'
+                      : transportModalType === 'combis'
+                      ? '#107C53'
+                      : '#F5A623'
+                  }
+                />
                 <Text style={[styles.modalTitle, { color: C.text }]}>
-                  {isEn
-                    ? 'Terminals & Bus Schedules'
-                    : 'Terminales y Salidas'}
+                  {transportModalType === 'combis'
+                    ? isEn
+                      ? 'Combi Terminal to Cajamarca'
+                      : 'Terminal de Combis a Cajamarca'
+                    : transportModalType === 'autos'
+                    ? isEn
+                      ? 'Car Stand to Cajamarca'
+                      : 'Paradero de Autos a Cajamarca'
+                    : isEn
+                    ? 'Bus Terminals to Cajamarca'
+                    : 'Terminales de Buses a Cajamarca'}
                 </Text>
               </View>
-              <Pressable onPress={() => setBusModalVisible(false)}>
+              <Pressable onPress={() => setTransportModalType(null)}>
                 <Ionicons name="close" size={22} color={C.textSecondary} />
               </Pressable>
             </View>
 
-            {BUS_TERMINALS.map((bus) => (
-              <View
-                key={bus.empresa}
-                style={[
-                  styles.busModalItem,
-                  { backgroundColor: C.cardAlt, borderColor: C.border },
-                ]}
-              >
-                <Text style={[styles.modalItemTitle, { color: C.text }]}>
-                  {bus.empresa}
-                </Text>
-                <Text style={[styles.busRouteText, { color: C.primaryLight }]}>
-                  {bus.ruta}
-                </Text>
-                <Text style={[styles.modalItemSub, { color: C.textSecondary }]}>
-                  {bus.salidas}
-                </Text>
-                <Text style={[styles.busTerminalAddr, { color: C.textMuted }]}>
-                  {bus.terminal}
-                </Text>
-              </View>
-            ))}
+            {busAgencies
+              .filter((bus) => (bus.tipo || 'buses') === transportModalType)
+              .map((bus) => (
+                <View
+                  key={bus.id || bus.empresa}
+                  style={[
+                    styles.busModalItem,
+                    { backgroundColor: C.cardAlt, borderColor: C.border },
+                  ]}
+                >
+                  <Text style={[styles.modalItemTitle, { color: C.text }]}>
+                    {bus.empresa}
+                  </Text>
+                  <Text style={[styles.busRouteText, { color: C.primaryLight }]}>
+                    {bus.ruta}
+                  </Text>
+                  <Text style={[styles.busTerminalAddr, { color: C.textMuted }]}>
+                    {bus.terminal}
+                  </Text>
+                </View>
+              ))}
           </View>
         </View>
       </Modal>
@@ -632,8 +561,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatarBox: {
-    width: 52,
-    height: 52,
+    width: 50,
+    height: 50,
     borderRadius: 15,
     backgroundColor: '#F5A623',
     alignItems: 'center',
@@ -641,7 +570,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     color: '#111827',
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: '900',
   },
   profileInfo: {
@@ -666,11 +595,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '900',
   },
-  profileSub: {
-    color: '#D1FAE5',
-    fontSize: 12,
-    marginTop: 2,
-  },
   sosBtn: {
     backgroundColor: '#F43F5E',
     borderRadius: 999,
@@ -684,54 +608,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12.5,
     fontWeight: '900',
-  },
-  offlineCard: {
-    marginTop: 14,
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
-  },
-  offlineTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  offlineIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  offlineTextCol: {
-    flex: 1,
-  },
-  offlineTitle: {
-    fontSize: 14.5,
-    fontWeight: '800',
-  },
-  offlineDesc: {
-    fontSize: 12.5,
-    lineHeight: 18,
-    marginTop: 3,
-  },
-  downloadBtn: {
-    marginTop: 14,
-    backgroundColor: '#0F5C41',
-    borderRadius: 12,
-    height: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  downloadBtnDone: {
-    backgroundColor: '#128C63',
-  },
-  downloadBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
   },
   savedSection: {
     marginTop: 18,
@@ -803,7 +679,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   savedName: {
-    fontSize: 14.5,
+    fontSize: 14,
     fontWeight: '800',
     marginTop: 4,
   },
@@ -818,10 +694,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   savedGoBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#0E8F64',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#128C63',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -831,41 +707,41 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   emptySavedText: {
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12.5,
     textAlign: 'center',
+    lineHeight: 18,
   },
   settingsCard: {
-    marginTop: 16,
+    marginTop: 18,
     borderRadius: 20,
     borderWidth: 1,
     overflow: 'hidden',
   },
   settingRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    gap: 12,
   },
   settingRowLast: {
     borderBottomWidth: 0,
   },
   settingLabel: {
     fontSize: 13.5,
-    fontWeight: '700',
+    fontWeight: '800',
     flex: 1,
+    paddingRight: 10,
   },
   langSwitchRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   langBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
     borderRadius: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
   },
   langBtnActive: {
     backgroundColor: '#0F5C41',
@@ -876,16 +752,18 @@ const styles = StyleSheet.create({
   },
   busTextCol: {
     flex: 1,
+    paddingRight: 10,
   },
   busSub: {
     fontSize: 11.5,
     marginTop: 2,
   },
   onboardingBtn: {
-    marginTop: 16,
-    borderRadius: 999,
+    marginTop: 14,
+    borderRadius: 14,
     borderWidth: 1,
-    height: 46,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -897,20 +775,21 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.52)',
+    backgroundColor: 'rgba(17, 24, 39, 0.5)',
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
   modalCard: {
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
     padding: 18,
-    gap: 12,
+    gap: 10,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 4,
   },
   modalTitleRow: {
     flexDirection: 'row',
@@ -918,7 +797,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 16.5,
     fontWeight: '900',
   },
   modalItem: {
@@ -938,13 +817,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   modalItemSub: {
-    fontSize: 12,
+    fontSize: 11.5,
     marginTop: 2,
   },
   modalCallBtn: {
-    backgroundColor: '#F43F5E',
+    backgroundColor: '#0F5C41',
     borderRadius: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 7,
     flexDirection: 'row',
     alignItems: 'center',
@@ -967,6 +846,6 @@ const styles = StyleSheet.create({
   },
   busTerminalAddr: {
     fontSize: 11.5,
-    marginTop: 2,
+    marginTop: 1,
   },
 });
